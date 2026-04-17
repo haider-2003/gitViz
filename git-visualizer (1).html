@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitViz</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET ─── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ─── TOKENS ─── */
+:root{
+  --white:#ffffff;
+  --gray-50:#fafafa;
+  --gray-100:#f4f4f5;
+  --gray-150:#ebebec;
+  --gray-200:#e4e4e7;
+  --gray-300:#d1d1d6;
+  --gray-400:#a1a1aa;
+  --gray-500:#71717a;
+  --gray-600:#52525b;
+  --gray-700:#3f3f46;
+  --gray-800:#27272a;
+  --gray-900:#18181b;
+  --gray-950:#09090b;
+
+  --bg: var(--white);
+  --surface: var(--gray-50);
+  --border: var(--gray-200);
+  --border-strong: var(--gray-300);
+  --text: var(--gray-900);
+  --text-secondary: var(--gray-500);
+  --text-tertiary: var(--gray-400);
+
+  /* terminal - stays dark, but refined */
+  --term-bg: #0a0a0b;
+  --term-border: #1f1f23;
+  --term-text: #a1a1aa;
+
+  /* accent */
+  --accent: #000000;
+  --accent-blue: #0070f3;
+  --accent-green: #00a86b;
+  --accent-red: #e5484d;
+  --accent-amber: #f59e0b;
+  --accent-purple: #7c3aed;
+
+  /* fonts */
+  --font-sans: 'Geist', -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', 'Fira Code', monospace;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
+
+/* ─── HEADER ─── */
+header{
+  height:52px;
+  background:rgba(255,255,255,0.85);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;
+  position:relative;z-index:30;flex-shrink:0;
+}
+
+.logo{
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--font-mono);font-weight:600;font-size:14px;
+  color:var(--gray-950);letter-spacing:-0.3px;
+}
+.logo-icon{
+  width:24px;height:24px;background:var(--gray-950);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.logo-icon svg{width:13px;height:13px;fill:none;stroke:white;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.logo-sep{color:var(--gray-300);margin:0 2px}
+
+.header-mid{display:flex;align-items:center;gap:8px}
+
+.branch-tag{
+  display:inline-flex;align-items:center;gap:5px;
+  font-family:var(--font-mono);font-size:11.5px;font-weight:500;
+  background:var(--gray-100);border:1px solid var(--border);
+  color:var(--gray-700);padding:3px 10px;border-radius:20px;
+  transition:all .15s;
+}
+.branch-tag .b-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-green);flex-shrink:0;box-shadow:0 0 0 2px rgba(0,168,107,0.2)}
+.branch-tag.detached .b-dot{background:var(--accent-amber)}
+.branch-tag.empty .b-dot{background:var(--gray-300)}
+
+.staged-chip{
+  display:none;align-items:center;gap:4px;
+  font-family:var(--font-mono);font-size:10.5px;font-weight:500;
+  background:#fffbeb;border:1px solid #fde68a;
+  color:#92400e;padding:2px 8px;border-radius:20px;
+}
+.staged-chip::before{content:'●';font-size:8px;color:#f59e0b}
+
+.header-right{display:flex;align-items:center;gap:6px}
+
+.hbtn{
+  font-family:var(--font-mono);font-size:11px;font-weight:400;
+  color:var(--gray-500);background:transparent;
+  border:1px solid var(--border);padding:4px 11px;border-radius:var(--radius-sm);
+  cursor:pointer;transition:all .12s;white-space:nowrap;
+}
+.hbtn:hover{color:var(--gray-800);border-color:var(--gray-300);background:var(--gray-50)}
+.hbtn.active{color:var(--accent-blue);border-color:#bfdbfe;background:#eff6ff}
+
+.kbd{
+  display:inline-flex;align-items:center;
+  font-family:var(--font-mono);font-size:10px;
+  background:var(--gray-100);border:1px solid var(--gray-200);
+  border-bottom-width:2px;color:var(--gray-500);
+  padding:1px 5px;border-radius:3px;margin-left:6px;
+}
+
+/* ─── LAYOUT ─── */
+.workspace{display:grid;grid-template-columns:1fr 1fr;height:calc(100vh - 52px)}
+.pane{overflow:hidden;display:flex;flex-direction:column;position:relative}
+.pane-terminal{background:var(--term-bg)}
+.pane-graph{background:var(--white)}
+.divider{border-left:1px solid var(--border)}
+
+/* ─── PANE TOPBAR ─── */
+.pane-bar{
+  height:36px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;flex-shrink:0;
+}
+.pane-bar-terminal{
+  background:#0f0f11;border-bottom:1px solid var(--term-border);
+}
+.pane-bar-graph{
+  background:var(--gray-50);border-bottom:1px solid var(--border);
+}
+.pane-bar-left{display:flex;align-items:center;gap:7px}
+.pane-title{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase}
+.pane-title-terminal{font-family:var(--font-mono);color:#52525b}
+.pane-title-graph{font-family:var(--font-sans);color:var(--gray-400)}
+
+/* mac-style dots */
+.mac-dots{display:flex;gap:5px;align-items:center}
+.mac-dot{width:10px;height:10px;border-radius:50%}
+.mac-dot-r{background:#ff5f57}.mac-dot-y{background:#ffbd2e}.mac-dot-g{background:#28c840}
+
+.pane-bar-right{display:flex;gap:6px}
+.pbar-btn{
+  font-family:var(--font-mono);font-size:10px;color:#52525b;
+  background:transparent;border:1px solid #2a2a2e;
+  padding:2px 8px;border-radius:3px;cursor:pointer;transition:all .12s;
+}
+.pbar-btn:hover{color:#a1a1aa;border-color:#3f3f46}
+
+/* ─── TERMINAL ─── */
+.terminal{
+  flex:1;overflow-y:auto;padding:16px 18px 8px;
+  font-family:var(--font-mono);
+  background:var(--term-bg);
+}
+.terminal::-webkit-scrollbar{width:3px}
+.terminal::-webkit-scrollbar-track{background:transparent}
+.terminal::-webkit-scrollbar-thumb{background:#2a2a2e;border-radius:2px}
+
+.line{font-size:12.5px;line-height:1.8;white-space:pre-wrap;word-break:break-all}
+.line.p{color:#60a5fa}
+.line.p::before{content:'$ ';color:#4ade80;font-weight:600}
+.line.ok{color:#4ade80}
+.line.er{color:#f87171}
+.line.in{color:#67e8f9}
+.line.wn{color:#fbbf24}
+.line.dm{color:#3f3f46;font-style:italic}
+.line.ou{color:#71717a}
+.line.hl{color:#c084fc}
+.line.sep{color:#1f1f23;letter-spacing:1px}
+
+/* ─── INPUT ROW ─── */
+.input-wrap{position:relative;flex-shrink:0}
+.input-row{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  border-top:1px solid var(--term-border);background:#0d0d10;
+}
+.psym{
+  font-family:var(--font-mono);font-size:13px;font-weight:600;
+  color:#4ade80;flex-shrink:0;user-select:none;
+}
+#cinput{
+  flex:1;background:transparent;border:none;outline:none;
+  font-family:var(--font-mono);font-size:12.5px;color:#e4e4e7;
+  caret-color:#4ade80;
+}
+#cinput::placeholder{color:#3f3f46}
+
+/* ─── AUTOCOMPLETE ─── */
+.autocomplete{
+  position:absolute;bottom:100%;left:0;right:0;z-index:50;
+  background:#111114;border:1px solid #2a2a2e;border-bottom:none;
+  border-radius:var(--radius) var(--radius) 0 0;
+  overflow:hidden;display:none;
+  box-shadow:0 -8px 24px rgba(0,0,0,.4);
+}
+.ac-item{
+  padding:7px 16px;font-family:var(--font-mono);font-size:11.5px;
+  cursor:pointer;color:#52525b;transition:.08s;display:flex;align-items:center;gap:6px;
+}
+.ac-item:hover,.ac-item.selected{background:#1a1a1f;color:#a1a1aa}
+.ac-item em{color:#60a5fa;font-style:normal;font-weight:500}
+.ac-item-rest{color:#3f3f46}
+.ac-hint{
+  padding:5px 16px;font-size:10px;color:#2a2a2e;
+  border-top:1px solid #1a1a1f;font-family:var(--font-mono);
+}
+
+/* ─── GRAPH PANE ─── */
+.graph-wrap{
+  flex:1;overflow:auto;position:relative;
+  /* Vercel-style dot grid background */
+  background-color:var(--white);
+  background-image:radial-gradient(circle,#d4d4d8 1px,transparent 1px);
+  background-size:22px 22px;
+}
+.graph-wrap::-webkit-scrollbar{width:5px;height:5px}
+.graph-wrap::-webkit-scrollbar-track{background:transparent}
+.graph-wrap::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:3px}
+#gcanvas{display:block;position:relative;z-index:1}
+
+/* ─── HELP MODAL ─── */
+.overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(0,0,0,0.3);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .18s;
+}
+.overlay.open{opacity:1;pointer-events:all}
+
+.modal{
+  background:var(--white);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  width:min(740px,94vw);
+  max-height:86vh;
+  overflow:hidden;
+  display:flex;flex-direction:column;
+  box-shadow:0 24px 80px rgba(0,0,0,0.12),0 0 0 1px rgba(0,0,0,0.04);
+  transform:translateY(8px) scale(0.99);
+  transition:transform .2s cubic-bezier(.16,1,.3,1),opacity .18s;
+}
+.overlay.open .modal{transform:none;opacity:1}
+
+.modal-header{
+  padding:20px 24px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;
+  background:var(--gray-50);
+}
+.modal-title{font-size:13px;font-weight:600;color:var(--gray-900);font-family:var(--font-sans)}
+.modal-subtitle{font-size:11px;color:var(--gray-400);margin-top:2px;font-family:var(--font-mono)}
+.modal-close-btn{
+  width:28px;height:28px;border-radius:var(--radius-sm);
+  background:transparent;border:1px solid var(--border);
+  color:var(--gray-400);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:14px;
+  transition:all .12s;
+}
+.modal-close-btn:hover{background:var(--gray-100);color:var(--gray-700);border-color:var(--gray-300)}
+
+.modal-body{overflow-y:auto;flex:1;padding:0}
+.modal-body::-webkit-scrollbar{width:3px}
+.modal-body::-webkit-scrollbar-thumb{background:var(--gray-200)}
+
+.cmd-section{padding:0}
+.cmd-section-label{
+  font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--gray-400);padding:14px 24px 8px;
+  position:sticky;top:0;background:var(--white);
+  border-bottom:1px solid var(--gray-100);z-index:1;
+  font-family:var(--font-sans);
+}
+.cmd-row{
+  display:grid;grid-template-columns:1fr 1fr;
+  padding:0 24px;border-bottom:1px solid var(--gray-100);
+}
+.cmd-row:last-child{border-bottom:none}
+.cmd-cell{padding:9px 0}
+.cmd-cell+.cmd-cell{border-left:1px solid var(--gray-100);padding-left:20px}
+.cmd-code{
+  font-family:var(--font-mono);font-size:11.5px;font-weight:500;
+  color:var(--gray-800);display:block;
+}
+.cmd-code span{color:var(--accent-blue)}
+.cmd-desc{
+  font-family:var(--font-sans);font-size:11.5px;color:var(--gray-400);
+  margin-top:2px;display:block;line-height:1.4;
+}
+
+/* ─── HINT BAR ─── */
+.hint-bar{
+  padding:5px 16px;background:#080809;border-top:1px solid #141416;
+  display:flex;gap:16px;flex-shrink:0;
+}
+.hint-item{display:flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:10px;color:#3f3f46}
+.hint-item .k{
+  background:#1a1a1f;border:1px solid #2a2a2e;border-bottom-width:2px;
+  color:#52525b;padding:0px 5px;border-radius:3px;font-size:9px;
+}
+
+/* ─── GRAPH CANVAS THEME (set in JS via theme vars) ─── */
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 16 16"><circle cx="4" cy="4" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="4" r="2"/><line x1="4" y1="6" x2="4" y2="12"/><line x1="6" y1="4" x2="10" y2="4"/><line x1="12" y1="6" x2="12" y2="10"/></svg>
+    </div>
+    GitViz
+    <span class="logo-sep">/</span>
+    <span style="color:var(--gray-400);font-weight:400">practice</span>
+  </div>
+
+  <div class="header-mid">
+    <div class="branch-tag empty" id="branch-tag">
+      <span class="b-dot"></span>
+      <span id="hbranch">not initialized</span>
+    </div>
+    <div class="staged-chip" id="staged-badge">staged changes</div>
+  </div>
+
+  <div class="header-right">
+    <button class="hbtn" id="btn-ol" onclick="toggleOneline()">--oneline</button>
+    <button class="hbtn" onclick="openHelp()">
+      Commands
+      <span class="kbd">?</span>
+    </button>
+  </div>
+</header>
+
+<!-- WORKSPACE -->
+<div class="workspace">
+
+  <!-- TERMINAL PANE -->
+  <div class="pane pane-terminal">
+    <div class="pane-bar pane-bar-terminal">
+      <div class="pane-bar-left">
+        <div class="mac-dots">
+          <div class="mac-dot mac-dot-r"></div>
+          <div class="mac-dot mac-dot-y"></div>
+          <div class="mac-dot mac-dot-g"></div>
+        </div>
+        <span class="pane-title pane-title-terminal">terminal</span>
+      </div>
+      <div class="pane-bar-right">
+        <button class="pbar-btn" onclick="term.innerHTML=''">clear</button>
+        <button class="pbar-btn" onclick="doReset()">reset</button>
+      </div>
+    </div>
+    <div class="terminal" id="terminal"></div>
+    <div class="input-wrap">
+      <div class="autocomplete" id="ac"></div>
+      <div class="input-row">
+        <span class="psym">›</span>
+        <input id="cinput" type="text" placeholder="git init" autocomplete="off" spellcheck="false"/>
+      </div>
+    </div>
+    <div class="hint-bar">
+      <span class="hint-item"><span class="k">↑↓</span> history</span>
+      <span class="hint-item"><span class="k">Tab</span> autocomplete</span>
+      <span class="hint-item"><span class="k">?</span> commands</span>
+      <span class="hint-item"><span class="k">Esc</span> dismiss</span>
+    </div>
+  </div>
+
+  <!-- GRAPH PANE -->
+  <div class="pane pane-graph divider">
+    <div class="pane-bar pane-bar-graph">
+      <div class="pane-bar-left">
+        <span class="pane-title pane-title-graph">Graph</span>
+      </div>
+      <div id="commit-count" style="font-size:11px;font-family:var(--font-mono);color:var(--gray-400)"></div>
+    </div>
+    <div class="graph-wrap" id="gwrap">
+      <canvas id="gcanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- HELP MODAL -->
+<div class="overlay" id="help-overlay" onclick="maybeClose(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Command Reference</div>
+        <div class="modal-subtitle">50+ git commands supported</div>
+      </div>
+      <button class="modal-close-btn" onclick="closeHelp()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="cmd-section-label">Setup</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git init</code><span class="cmd-desc">Initialize new repository</span></div><div class="cmd-cell"><code class="cmd-code">git clone <span>&lt;url&gt;</span></code><span class="cmd-desc">Simulate cloning a repo</span></div></div>
+
+      <div class="cmd-section-label">Staging & Committing</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git add <span>&lt;file&gt;</span></code><span class="cmd-desc">Stage a file (use . for all)</span></div><div class="cmd-cell"><code class="cmd-code">git add -p</code><span class="cmd-desc">Interactive staging (simulated)</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git restore <span>--staged</span> &lt;f&gt;</code><span class="cmd-desc">Unstage a file</span></div><div class="cmd-cell"><code class="cmd-code">git restore <span>&lt;file&gt;</span></code><span class="cmd-desc">Discard working changes</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git commit <span>-m</span> "msg"</code><span class="cmd-desc">Create a commit</span></div><div class="cmd-cell"><code class="cmd-code">git commit <span>-am</span> "msg"</code><span class="cmd-desc">Stage all tracked + commit</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git commit <span>--amend</span> -m "msg"</code><span class="cmd-desc">Amend last commit message</span></div><div class="cmd-cell"><code class="cmd-code">git commit <span>--amend --no-edit</span></code><span class="cmd-desc">Amend without changing message</span></div></div>
+
+      <div class="cmd-section-label">Branches</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git branch</code><span class="cmd-desc">List all branches</span></div><div class="cmd-cell"><code class="cmd-code">git branch <span>-v</span></code><span class="cmd-desc">List with last commit info</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git branch <span>&lt;name&gt;</span></code><span class="cmd-desc">Create a branch</span></div><div class="cmd-cell"><code class="cmd-code">git branch <span>-m</span> &lt;old&gt; &lt;new&gt;</code><span class="cmd-desc">Rename a branch</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git branch <span>-d</span> &lt;name&gt;</code><span class="cmd-desc">Delete merged branch</span></div><div class="cmd-cell"><code class="cmd-code">git branch <span>-D</span> &lt;name&gt;</code><span class="cmd-desc">Force delete branch</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git branch <span>--merged</span></code><span class="cmd-desc">Branches merged into HEAD</span></div><div class="cmd-cell"><code class="cmd-code">git branch <span>--no-merged</span></code><span class="cmd-desc">Branches not yet merged</span></div></div>
+
+      <div class="cmd-section-label">Checkout & Switch</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git checkout <span>&lt;branch&gt;</span></code><span class="cmd-desc">Switch to branch</span></div><div class="cmd-cell"><code class="cmd-code">git checkout <span>-b</span> &lt;name&gt;</code><span class="cmd-desc">Create and switch</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git switch <span>&lt;branch&gt;</span></code><span class="cmd-desc">Switch branch (modern)</span></div><div class="cmd-cell"><code class="cmd-code">git switch <span>-c</span> &lt;name&gt;</code><span class="cmd-desc">Create and switch (modern)</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git switch <span>-</span></code><span class="cmd-desc">Switch to previous branch</span></div><div class="cmd-cell"><code class="cmd-code">git checkout <span>&lt;commit-id&gt;</span></code><span class="cmd-desc">Detach HEAD to commit</span></div></div>
+
+      <div class="cmd-section-label">Merge & Rebase</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git merge <span>&lt;branch&gt;</span></code><span class="cmd-desc">Merge (fast-forward or commit)</span></div><div class="cmd-cell"><code class="cmd-code">git merge <span>--no-ff</span> &lt;branch&gt;</code><span class="cmd-desc">Always create merge commit</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git merge <span>--squash</span> &lt;branch&gt;</code><span class="cmd-desc">Squash into one staged change</span></div><div class="cmd-cell"><code class="cmd-code">git merge <span>--abort</span></code><span class="cmd-desc">Abort in-progress merge</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git rebase <span>&lt;branch&gt;</span></code><span class="cmd-desc">Rebase current onto branch</span></div><div class="cmd-cell"><code class="cmd-code">git rebase <span>-i</span> HEAD~&lt;n&gt;</code><span class="cmd-desc">Interactive rebase (simulated)</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git cherry-pick <span>&lt;id&gt;</span></code><span class="cmd-desc">Copy commit onto current branch</span></div><div class="cmd-cell"><code class="cmd-code">git cherry-pick <span>&lt;a&gt;..&lt;b&gt;</span></code><span class="cmd-desc">Copy a range of commits</span></div></div>
+
+      <div class="cmd-section-label">Stash</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git stash</code><span class="cmd-desc">Stash working changes</span></div><div class="cmd-cell"><code class="cmd-code">git stash <span>push -m</span> "msg"</code><span class="cmd-desc">Stash with a label</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git stash <span>list</span></code><span class="cmd-desc">List all stashes</span></div><div class="cmd-cell"><code class="cmd-code">git stash <span>pop</span></code><span class="cmd-desc">Apply + drop top stash</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git stash <span>apply</span> stash@{n}</code><span class="cmd-desc">Apply without dropping</span></div><div class="cmd-cell"><code class="cmd-code">git stash <span>drop / clear</span></code><span class="cmd-desc">Remove stash(es)</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git stash <span>branch</span> &lt;name&gt;</code><span class="cmd-desc">Create branch from stash</span></div><div class="cmd-cell"><code class="cmd-code">git stash <span>show</span></code><span class="cmd-desc">Show stash contents</span></div></div>
+
+      <div class="cmd-section-label">Reset & Revert</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git reset <span>HEAD~1</span></code><span class="cmd-desc">Undo last commit (mixed)</span></div><div class="cmd-cell"><code class="cmd-code">git reset <span>--soft</span> HEAD~&lt;n&gt;</code><span class="cmd-desc">Move HEAD back, keep staged</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git reset <span>--mixed</span> HEAD~&lt;n&gt;</code><span class="cmd-desc">Unstage changes (default)</span></div><div class="cmd-cell"><code class="cmd-code">git reset <span>--hard</span> HEAD~&lt;n&gt;</code><span class="cmd-desc">Discard commits + changes</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git revert <span>&lt;id&gt;</span></code><span class="cmd-desc">New commit undoing a commit</span></div><div class="cmd-cell"><code class="cmd-code">git revert <span>HEAD</span></code><span class="cmd-desc">Revert last commit</span></div></div>
+
+      <div class="cmd-section-label">Tags</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git tag <span>&lt;name&gt;</span></code><span class="cmd-desc">Lightweight tag at HEAD</span></div><div class="cmd-cell"><code class="cmd-code">git tag <span>-a</span> &lt;n&gt; <span>-m</span> "msg"</code><span class="cmd-desc">Annotated tag</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git tag <span>&lt;name&gt; &lt;commit-id&gt;</span></code><span class="cmd-desc">Tag a specific commit</span></div><div class="cmd-cell"><code class="cmd-code">git tag <span>-d</span> &lt;name&gt;</code><span class="cmd-desc">Delete a tag</span></div></div>
+
+      <div class="cmd-section-label">Inspection</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git log</code><span class="cmd-desc">Full commit history</span></div><div class="cmd-cell"><code class="cmd-code">git log <span>--oneline --graph</span></code><span class="cmd-desc">Compact graph view</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git status</code><span class="cmd-desc">Working tree status</span></div><div class="cmd-cell"><code class="cmd-code">git diff</code><span class="cmd-desc">Show unstaged changes</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git show <span>&lt;id&gt;</span></code><span class="cmd-desc">Show commit details</span></div><div class="cmd-cell"><code class="cmd-code">git reflog</code><span class="cmd-desc">Full HEAD movement history</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git shortlog</code><span class="cmd-desc">Commits grouped by author</span></div><div class="cmd-cell"><code class="cmd-code">git blame <span>&lt;file&gt;</span></code><span class="cmd-desc">Who changed what (simulated)</span></div></div>
+
+      <div class="cmd-section-label">Remote (Simulated)</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git remote <span>add</span> origin &lt;url&gt;</code><span class="cmd-desc">Add a remote</span></div><div class="cmd-cell"><code class="cmd-code">git remote <span>-v</span></code><span class="cmd-desc">List remotes</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git fetch / pull / push</code><span class="cmd-desc">Remote sync (simulated)</span></div><div class="cmd-cell"><code class="cmd-code">git push <span>--force</span></code><span class="cmd-desc">Force push (simulated)</span></div></div>
+
+      <div class="cmd-section-label">Config & Utility</div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">git config <span>user.name</span> "name"</code><span class="cmd-desc">Set author name</span></div><div class="cmd-cell"><code class="cmd-code">git config <span>--list</span></code><span class="cmd-desc">Show all config values</span></div></div>
+      <div class="cmd-row"><div class="cmd-cell"><code class="cmd-code">clear</code><span class="cmd-desc">Clear terminal output</span></div><div class="cmd-cell"><code class="cmd-code">reset</code><span class="cmd-desc">Wipe repo, start fresh</span></div></div>
+      <div style="height:16px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let S = fresh();
+function fresh() {
+  return {
+    inited:false, commits:[], branches:{}, HEAD:null, detached:false,
+    tags:{}, stashes:[], staged:[], working:[], remotes:{},
+    config:{'user.name':'You','user.email':'you@example.com'},
+    reflog:[], counter:0, prevBranch:null, onelineMode:false,
+  };
+}
+function makeId() {
+  S.counter++;
+  return (S.counter * 0x9e3779b9 >>> 0).toString(16).padStart(7,'0').slice(0,7);
+}
+function headCommit() {
+  if (S.detached) return S.commits.find(c=>c.id===S.HEAD)||null;
+  return S.commits.find(c=>c.id===S.branches[S.HEAD])||null;
+}
+function ancestors(cid, seen=new Set()) {
+  if (!cid||seen.has(cid)) return seen;
+  seen.add(cid);
+  const c=S.commits.find(x=>x.id===cid);
+  if (c) c.parents.filter(Boolean).forEach(p=>ancestors(p,seen));
+  return seen;
+}
+function isAncestor(anc,ofId){return ancestors(ofId).has(anc);}
+function now(){return new Date().toLocaleString();}
+function pushRL(action,desc){
+  S.reflog.unshift({action,desc,branch:S.HEAD,to:(S.detached?S.HEAD:S.branches[S.HEAD])||'null'});
+  if(S.reflog.length>60)S.reflog.pop();
+}
+
+// ═══════════════════════════════════════════════════
+//  TERMINAL
+// ═══════════════════════════════════════════════════
+const term=document.getElementById('terminal');
+function print(t,c='ou'){
+  if(t===''){const d=document.createElement('div');d.style.height='6px';term.appendChild(d);}
+  else{const d=document.createElement('div');d.className='line '+c;d.textContent=t;term.appendChild(d);}
+  term.scrollTop=term.scrollHeight;
+}
+const pCmd=t=>print(t,'p'),pOk=t=>print(t,'ok'),pErr=t=>print(t,'er'),
+      pIn=t=>print(t,'in'),pWn=t=>print(t,'wn'),pDm=t=>print(t,'dm'),
+      pHl=t=>print(t,'hl'),pSep=()=>print('─'.repeat(52),'sep');
+
+// ═══════════════════════════════════════════════════
+//  GRAPH
+// ═══════════════════════════════════════════════════
+const canvas=document.getElementById('gcanvas');
+const ctx=canvas.getContext('2d');
+const gwrap=document.getElementById('gwrap');
+
+// Light-mode palette — vivid but controlled
+const PALETTE=['#0070f3','#00a86b','#e5484d','#d946ef','#f59e0b','#06b6d4','#ec4899','#8b5cf6','#10b981','#ef4444'];
+const BCC={};
+let colorIdx=0;
+function gc(name){
+  if(BCC[name])return BCC[name];
+  const lo=name.toLowerCase();
+  const pre={main:'#111111',master:'#111111',develop:'#0070f3',dev:'#0070f3'};
+  let col=pre[lo]||null;
+  if(!col){
+    if(lo.startsWith('feature')||lo.startsWith('feat'))col='#00a86b';
+    else if(lo.startsWith('hotfix')||lo.startsWith('fix'))col='#e5484d';
+    else if(lo.startsWith('release'))col='#8b5cf6';
+    else if(lo.startsWith('bugfix'))col='#f59e0b';
+    else{col=PALETTE[colorIdx%PALETTE.length];colorIdx++;}
+  }
+  BCC[name]=col;return col;
+}
+
+const ROW=72,COL=130,PL=72,PT=96,CR=14;
+
+function buildLayout(){
+  const order=[];
+  S.commits.forEach(c=>{if(c.branch&&!order.includes(c.branch))order.push(c.branch);});
+  Object.keys(S.branches).forEach(b=>{if(!order.includes(b))order.push(b);});
+  const branchCol={};order.forEach((b,i)=>branchCol[b]=i);
+  const colOf={};S.commits.forEach(c=>{colOf[c.id]=branchCol[c.branch]??0;});
+  const maxCol=Math.max(0,...Object.values(branchCol));
+  return {colOf,branchCol,maxCol};
+}
+
+function drawGraph(){
+  const {colOf,maxCol}=buildLayout();
+  const rows=S.commits.length;
+  const W=Math.max(gwrap.clientWidth, PL+(maxCol+1)*COL+200);
+  const H=Math.max(gwrap.clientHeight, PT+rows*ROW+100);
+  canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  if(!S.inited){
+    ctx.fillStyle='#d4d4d8';ctx.font='500 13px Geist Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('run  git init  to start',W/2,H/2);return;
+  }
+  if(!rows){
+    ctx.fillStyle='#d4d4d8';ctx.font='13px Geist Mono,monospace';ctx.textAlign='center';
+    ctx.fillText('no commits yet — try  git commit -m "init"',W/2,H/2);return;
+  }
+
+  const rowOf={};
+  S.commits.forEach((c,i)=>rowOf[c.id]=i);
+  const cx=id=>PL+(colOf[id]??0)*COL;
+  const cy=id=>PT+rowOf[id]*ROW;
+
+  // ── EDGES ──
+  S.commits.forEach(c=>{
+    c.parents.filter(Boolean).forEach(pid=>{
+      if(rowOf[pid]===undefined)return;
+      const x1=cx(pid),y1=cy(pid),x2=cx(c.id),y2=cy(c.id);
+      const col=gc(c.branch||'main');
+      ctx.beginPath();
+      // slightly thicker on light bg, softer alpha
+      ctx.strokeStyle=col+'55';ctx.lineWidth=2;
+      if(x1===x2){ctx.moveTo(x1,y1+CR);ctx.lineTo(x2,y2-CR);}
+      else{const my=(y1+y2)/2;ctx.moveTo(x1,y1+CR);ctx.bezierCurveTo(x1,my,x2,my,x2,y2-CR);}
+      ctx.stroke();
+    });
+  });
+
+  // ── COMMITS ──
+  S.commits.forEach(c=>{
+    const x=cx(c.id),y=cy(c.id);
+    const isMerge=c.parents.length>1;
+    const col=gc(c.branch||'main');
+    const isHead=S.detached?S.HEAD===c.id:S.branches[S.HEAD]===c.id;
+
+    const ptBranches=Object.entries(S.branches).filter(([,cid])=>cid===c.id).map(([b])=>b);
+    const ptTags=Object.entries(S.tags).filter(([,t])=>t.commitId===c.id).map(([n])=>n);
+    const labels=[
+      ...ptBranches.map(b=>({text:b,color:gc(b),isHead:!S.detached&&b===S.HEAD})),
+      ...ptTags.map(t=>({text:'tag:'+t,color:'#8b5cf6',isHead:false})),
+    ];
+
+    // Stacked labels above commit — each in its own row, never overlapping
+    const LH=20,LG=3;
+    const totalLH=labels.length*(LH+LG);
+    ctx.font='600 9px Geist Mono,monospace';
+
+    labels.forEach((lbl,li)=>{
+      const lx=x;
+      const ly=y-CR-12-totalLH+li*(LH+LG);
+      const text=(lbl.isHead?'▶ ':'')+lbl.text;
+      const tw=ctx.measureText(text).width;
+      const pw=tw+14,ph=LH;
+      const px=lx-pw/2,py=ly;
+
+      // shadow for depth on light bg
+      ctx.shadowColor='rgba(0,0,0,0.08)';ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+      ctx.beginPath();rrect(ctx,px,py,pw,ph,4);
+      ctx.fillStyle=lbl.isHead?lbl.color:'#ffffff';ctx.fill();
+      ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+      ctx.strokeStyle=lbl.isHead?lbl.color:lbl.color+'60';ctx.lineWidth=1.5;ctx.stroke();
+
+      ctx.fillStyle=lbl.isHead?'#ffffff':lbl.color;
+      ctx.textAlign='center';ctx.fillText(text,lx,py+13.5);
+
+      if(li===labels.length-1){
+        ctx.beginPath();ctx.strokeStyle=lbl.color+'40';ctx.lineWidth=1;
+        ctx.setLineDash([3,3]);ctx.moveTo(lx,py+ph);ctx.lineTo(lx,y-CR-2);
+        ctx.stroke();ctx.setLineDash([]);
+      }
+    });
+
+    // Detached HEAD
+    if(S.detached&&isHead){
+      const dy=y-CR-(totalLH||0)-28;
+      ctx.font='600 9px Geist,sans-serif';ctx.fillStyle='#71717a';ctx.textAlign='center';
+      ctx.fillText('HEAD (detached)',x,dy);
+    }
+
+    // Glow / shadow for HEAD commit
+    if(isHead){
+      ctx.shadowColor=col+'33';ctx.shadowBlur=18;ctx.shadowOffsetY=2;
+    }
+
+    // Outer ring for HEAD
+    if(isHead){
+      ctx.beginPath();ctx.arc(x,y,CR+4,0,Math.PI*2);
+      ctx.strokeStyle=col+'25';ctx.lineWidth=2;ctx.stroke();
+    }
+
+    // Circle fill
+    ctx.shadowColor='rgba(0,0,0,0.12)';ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+    ctx.beginPath();ctx.arc(x,y,CR,0,Math.PI*2);
+    ctx.fillStyle=isHead?col:(isMerge?col+'dd':'#ffffff');ctx.fill();
+    ctx.shadowColor='transparent';ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+
+    // Circle stroke
+    ctx.strokeStyle=isHead?col:col+'aa';ctx.lineWidth=isHead?0:2;ctx.stroke();
+
+    // Merge diamond overlay
+    if(isMerge&&!isHead){
+      ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);
+      ctx.strokeStyle=col+'cc';ctx.lineWidth=2;ctx.strokeRect(-7,-7,14,14);
+      ctx.restore();
+    }
+
+    // Short hash inside
+    ctx.font='600 8px Geist Mono,monospace';
+    ctx.fillStyle=isHead?'rgba(255,255,255,0.9)':col;
+    ctx.textAlign='center';ctx.fillText(c.id.slice(0,5),x,y+3.5);
+
+    // Commit message
+    ctx.font='500 12.5px Geist,sans-serif';
+    ctx.fillStyle=isHead?'#111111':'#71717a';
+    ctx.textAlign='left';
+    const msg=c.msg.length>26?c.msg.slice(0,26)+'…':c.msg;
+    ctx.fillText(msg,x+CR+12,y+4.5);
+
+    // Author
+    ctx.font='400 10px Geist Mono,monospace';ctx.fillStyle='#a1a1aa';
+    ctx.fillText(c.author||'',x+CR+12,y+18);
+  });
+
+  // Update commit count badge
+  document.getElementById('commit-count').textContent = rows
+    ? `${rows} commit${rows!==1?'s':''}`
+    : '';
+}
+
+function rrect(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+
+function redraw(){drawGraph();updateHeader();}
+new ResizeObserver(()=>drawGraph()).observe(gwrap);
+
+// ═══════════════════════════════════════════════════
+//  COMMANDS — full 50+ implementation
+// ═══════════════════════════════════════════════════
+function tokenize(input){
+  const t=[];let cur='',inQ=false,qc='';
+  for(const ch of input){
+    if(inQ){if(ch===qc)inQ=false;else cur+=ch;}
+    else if(ch==='"'||ch==="'"||ch==='`'){inQ=true;qc=ch;}
+    else if(ch===' '){if(cur){t.push(cur);cur='';}}
+    else cur+=ch;
+  }
+  if(cur)t.push(cur);return t;
+}
+
+function doReset(){
+  S=fresh();Object.keys(BCC).forEach(k=>delete BCC[k]);colorIdx=0;
+  pWn('Repository wiped. Run  git init  to start fresh.');redraw();
+}
+
+function processCommand(raw){
+  const input=raw.trim();if(!input)return;
+  pCmd(input);
+
+  if(input==='clear'){term.innerHTML='';return;}
+  if(input==='reset'){doReset();return;}
+  if(input==='help'){openHelp();return;}
+
+  const tok=tokenize(input);
+  if(!tok.length)return;
+  if(tok[0]!=='git'){pErr(`command not found: ${tok[0]}`);return;}
+  const sub=tok[1];
+
+  if(sub==='init'){
+    if(S.inited){pWn('Reinitialized existing Git repository.');return;}
+    S.inited=true;S.branches['main']=null;S.HEAD='main';
+    pOk('Initialized empty Git repository.');pDm('Tip: git commit -m "initial commit"');
+    redraw();return;
+  }
+  if(sub==='clone'){
+    if(S.inited){pErr('Already in a repository.');return;}
+    const url=tok[2]||'https://github.com/example/repo.git';
+    S.inited=true;S.branches['main']=null;S.HEAD='main';
+    const id=makeId();
+    S.commits.push({id,msg:'Initial commit (cloned)',parents:[],branch:'main',author:'origin',ts:now()});
+    S.branches['main']=id;S.remotes['origin']=url;pushRL('clone',`from ${url}`);
+    pOk(`Cloning from ${url}`);pOk("Checked out 'main'.");redraw();return;
+  }
+
+  if(!S.inited){pErr('fatal: not a git repository. Run  git init  first.');return;}
+
+  if(sub==='add'){
+    const f=tok[2]||'.';
+    if(f==='-p'){pIn('Interactive staging (simulated).');S.staged.push('(interactive patch)');}
+    else{S.staged.push(f);pOk(`Added '${f}' to staging area.`);}
+    updateHeader();return;
+  }
+  if(sub==='restore'){
+    if(tok[2]==='--staged'){const f=tok[3]||'.';S.staged=S.staged.filter(x=>x!==f&&f!=='.');pOk(`Unstaged '${f}'.`);}
+    else{const f=tok[2]||'.';S.working=S.working.filter(x=>x!==f&&f!=='.');pOk(`Restored '${f}'.`);}
+    updateHeader();return;
+  }
+  if(sub==='commit'){
+    const flags=tok.slice(2);
+    const amend=flags.includes('--amend'),noEdit=flags.includes('--no-edit');
+    const aFlag=flags.some(f=>f==='-a'||f==='-am');
+    const mIdx=flags.findIndex(f=>f==='-m');
+    let msg='';
+    if(mIdx!==-1&&flags[mIdx+1])msg=flags.slice(mIdx+1).join(' ').replace(/^["'`]|["'`]$/g,'');
+    if(!msg&&!noEdit){pErr('error: commit message required. Use -m "message"');return;}
+    if(aFlag)S.staged.push('(all tracked)');
+    if(amend){
+      const last=headCommit();if(!last){pErr('error: nothing to amend.');return;}
+      if(!noEdit&&msg)last.msg=msg;pOk(`[${S.HEAD} ${last.id}] ${last.msg} (amended)`);
+      pushRL('commit --amend',last.msg);redraw();return;
+    }
+    const parent=headCommit()?.id||null,id=makeId();
+    S.commits.push({id,msg:msg||'commit',parents:parent?[parent]:[],branch:S.detached?null:S.HEAD,author:S.config['user.name'],ts:now()});
+    if(!S.detached)S.branches[S.HEAD]=id;else S.HEAD=id;
+    S.staged=[];pushRL('commit',msg);pOk(`[${S.detached?id:S.HEAD} ${id}] ${msg}`);redraw();return;
+  }
+  if(sub==='branch'){
+    const flags=tok.slice(2);
+    if(!flags.length){
+      const bs=Object.keys(S.branches);if(!bs.length){pDm('(no branches)');return;}
+      bs.forEach(b=>{const cid=S.branches[b];const c=S.commits.find(x=>x.id===cid);const m=(!S.detached&&b===S.HEAD)?'* ':'  ';print(m+b+(c?`  ${cid.slice(0,7)}  ${c.msg.slice(0,30)}`:'  (empty)'),(!S.detached&&b===S.HEAD)?'ok':'ou');});return;
+    }
+    if(flags[0]==='-v'){Object.keys(S.branches).forEach(b=>{const cid=S.branches[b];const c=S.commits.find(x=>x.id===cid);const m=(!S.detached&&b===S.HEAD)?'* ':'  ';print(m+b.padEnd(22)+(cid?.slice(0,7)||'-------')+'  '+(c?.msg.slice(0,30)||''),(!S.detached&&b===S.HEAD)?'ok':'ou');});return;}
+    if(flags[0]==='--merged'){const hid=headCommit()?.id;if(!hid){pDm('(no commits)');return;}Object.keys(S.branches).filter(b=>{const c=S.branches[b];return c&&isAncestor(c,hid);}).forEach(b=>print('  '+b,'ou'));return;}
+    if(flags[0]==='--no-merged'){const hid=headCommit()?.id;if(!hid){pDm('(no commits)');return;}Object.keys(S.branches).filter(b=>{const c=S.branches[b];return c&&!isAncestor(c,hid);}).forEach(b=>print('  '+b,'ou'));return;}
+    if(flags[0]==='-m'){const[,old,nw]=flags;if(!old||!nw){pErr('usage: git branch -m <old> <new>');return;}if(!S.branches.hasOwnProperty(old)){pErr(`error: branch '${old}' not found.`);return;}S.branches[nw]=S.branches[old];delete S.branches[old];BCC[nw]=BCC[old];if(S.HEAD===old)S.HEAD=nw;S.commits.filter(c=>c.branch===old).forEach(c=>c.branch=nw);pOk(`Renamed '${old}' to '${nw}'.`);redraw();return;}
+    if(flags[0]==='-d'||flags[0]==='-D'){const name=flags[1];if(!name){pErr('usage: git branch -d <n>');return;}if(!S.branches.hasOwnProperty(name)){pErr(`error: branch '${name}' not found.`);return;}if(!S.detached&&S.HEAD===name){pErr(`error: cannot delete branch '${name}' you are on.`);return;}delete S.branches[name];pOk(`Deleted branch ${name}.`);redraw();return;}
+    const name=flags[0];if(S.branches.hasOwnProperty(name)){pErr(`fatal: branch '${name}' already exists.`);return;}const cur=headCommit();S.branches[name]=cur?.id||null;pOk(`Branch '${name}' created at ${cur?.id?.slice(0,7)||'(empty)'}.`);redraw();return;
+  }
+  if(sub==='checkout'){
+    const flags=tok.slice(2);const bF=flags[0]==='-b'||flags[0]==='-B';const name=bF?flags[1]:flags[0];
+    if(!name){pErr('error: branch/commit name required.');return;}
+    if(bF){if(S.branches.hasOwnProperty(name)&&flags[0]!=='-B'){pErr(`fatal: branch '${name}' already exists.`);return;}const cur=headCommit();S.branches[name]=cur?.id||null;S.prevBranch=S.HEAD;S.HEAD=name;S.detached=false;pOk(`Switched to a new branch '${name}'.`);pushRL('checkout -b',name);redraw();return;}
+    if(S.branches.hasOwnProperty(name)){S.prevBranch=S.HEAD;S.HEAD=name;S.detached=false;pOk(`Switched to branch '${name}'.`);pushRL('checkout',name);redraw();return;}
+    const c=S.commits.find(x=>x.id.startsWith(name));
+    if(c){S.prevBranch=S.HEAD;S.HEAD=c.id;S.detached=true;pWn(`HEAD is now at ${c.id.slice(0,7)} ${c.msg}`);pWn('You are in detached HEAD state.');pushRL('checkout',c.id);redraw();return;}
+    pErr(`error: pathspec '${name}' did not match any branch or commit.`);return;
+  }
+  if(sub==='switch'){
+    const flags=tok.slice(2);const cF=flags[0]==='-c'||flags[0]==='-C';const name=cF?flags[1]:flags[0];
+    if(name==='-'){if(!S.prevBranch){pErr('error: no previous branch.');return;}const p=S.prevBranch;S.prevBranch=S.HEAD;S.HEAD=p;S.detached=false;pOk(`Switched to branch '${p}'.`);pushRL('switch -',p);redraw();return;}
+    if(!name){pErr('error: branch name required.');return;}
+    if(cF){if(S.branches.hasOwnProperty(name)){pErr(`fatal: branch '${name}' already exists.`);return;}const cur=headCommit();S.branches[name]=cur?.id||null;S.prevBranch=S.HEAD;S.HEAD=name;S.detached=false;pOk(`Switched to a new branch '${name}'.`);pushRL('switch -c',name);redraw();return;}
+    if(!S.branches.hasOwnProperty(name)){pErr(`error: branch '${name}' not found. Use  git switch -c ${name}`);return;}
+    S.prevBranch=S.HEAD;S.HEAD=name;S.detached=false;pOk(`Switched to branch '${name}'.`);pushRL('switch',name);redraw();return;
+  }
+  if(sub==='merge'){
+    const flags=tok.slice(2);
+    if(flags[0]==='--abort'){pWn('Merge aborted.');return;}
+    const squash=flags.includes('--squash'),noFF=flags.includes('--no-ff');
+    const name=flags.find(f=>!f.startsWith('-'));
+    if(!name){pErr('error: branch name required.');return;}
+    if(S.detached){pErr('error: cannot merge in detached HEAD state.');return;}
+    if(!S.branches.hasOwnProperty(name)){pErr(`merge: '${name}' is not a valid branch.`);return;}
+    if(name===S.HEAD){pOk('Already on same branch.');return;}
+    const srcId=S.branches[name],dstId=S.branches[S.HEAD];
+    if(!srcId){pErr(`'${name}' has no commits.`);return;}
+    if(dstId&&isAncestor(dstId,srcId)&&!noFF&&!squash){S.branches[S.HEAD]=srcId;pOk('Fast-forward');pIn(`${S.HEAD} → ${srcId.slice(0,7)}`);pushRL('merge (ff)',name);redraw();return;}
+    if(squash){S.staged.push(`(squashed from '${name}')`);pWn(`Squash merge: changes staged. Run  git commit -m "msg"  to finish.`);updateHeader();return;}
+    const id=makeId();
+    S.commits.push({id,msg:`Merge branch '${name}' into ${S.HEAD}`,parents:[dstId,srcId].filter(Boolean),branch:S.HEAD,author:S.config['user.name'],ts:now()});
+    S.branches[S.HEAD]=id;pushRL('merge',name);pOk(`Merge made by 'ort' strategy.`);pIn(`'${name}' → '${S.HEAD}'`);redraw();return;
+  }
+  if(sub==='rebase'){
+    const flags=tok.slice(2);
+    if(flags[0]==='--abort'){pWn('Rebase aborted.');return;}
+    if(flags[0]==='--continue'){pOk('Rebase continued.');return;}
+    const iF=flags[0]==='-i',arg=iF?flags[1]:flags[0];
+    if(!arg){pErr('error: branch or HEAD~n required.');return;}
+    const hm=arg.match(/^HEAD~(\d+)$/i);
+    if(hm||iF){const n=hm?parseInt(hm[1]):(parseInt(arg.replace(/HEAD~/i,''))||1);pIn(`Interactive rebase of last ${n} commit(s) (simulated).`);pDm('In real Git this opens an editor.');return;}
+    if(S.detached){pErr('error: cannot rebase in detached HEAD state.');return;}
+    if(!S.branches.hasOwnProperty(arg)){pErr(`error: invalid upstream '${arg}'.`);return;}
+    const baseId=S.branches[arg];if(!baseId){pErr(`'${arg}' has no commits.`);return;}
+    const cur=S.HEAD,baseAncs=ancestors(baseId);
+    const excl=S.commits.filter(c=>c.branch===cur&&!baseAncs.has(c.id));
+    if(!excl.length){pOk('Already up to date.');return;}
+    let prev=baseId;excl.forEach(c=>{c.parents=[prev];prev=c.id;});
+    S.branches[cur]=prev;pushRL('rebase',arg);pOk(`Successfully rebased ${cur} onto ${arg}.`);redraw();return;
+  }
+  if(sub==='cherry-pick'){
+    const arg=tok[2];if(!arg){pErr('usage: git cherry-pick <id>');return;}
+    if(S.detached){pErr('error: cannot cherry-pick in detached HEAD state.');return;}
+    const range=arg.match(/^(.+)\.\.(.+)$/);
+    if(range){
+      const[,f,t]=range;const fi=S.commits.findIndex(c=>c.id.startsWith(f)),ti=S.commits.findIndex(c=>c.id.startsWith(t));
+      if(fi===-1||ti===-1){pErr('error: invalid range.');return;}
+      const rng=S.commits.slice(fi+1,ti+1);
+      rng.forEach(orig=>{const id=makeId(),par=headCommit()?.id||null;S.commits.push({id,msg:orig.msg+' (cherry-picked)',parents:par?[par]:[],branch:S.HEAD,author:S.config['user.name'],ts:now()});S.branches[S.HEAD]=id;});
+      pushRL('cherry-pick',arg);pOk(`Cherry-picked ${rng.length} commit(s) onto ${S.HEAD}.`);redraw();return;
+    }
+    const orig=S.commits.find(c=>c.id.startsWith(arg));if(!orig){pErr(`error: commit '${arg}' not found.`);return;}
+    const id=makeId(),par=headCommit()?.id||null;
+    S.commits.push({id,msg:orig.msg+' (cherry-picked)',parents:par?[par]:[],branch:S.HEAD,author:S.config['user.name'],ts:now()});
+    S.branches[S.HEAD]=id;pushRL('cherry-pick',orig.id);pOk(`[${S.HEAD} ${id}] ${orig.msg} (cherry-picked)`);redraw();return;
+  }
+  if(sub==='stash'){
+    const act=tok[2]||'push';
+    if(act==='list'){if(!S.stashes.length){pDm('(no stashes)');return;}S.stashes.forEach((s,i)=>print(`stash@{${i}}: On ${s.branch}: ${s.msg}`,'ou'));return;}
+    if(act==='show'){if(!S.stashes.length){pErr('No stash found.');return;}pIn(`stash@{0}: ${S.stashes[0].msg}`);pDm('(simulated diff)');return;}
+    if(act==='pop'||act==='apply'){const idxArg=tok[3];const idx=idxArg?parseInt(idxArg.replace(/stash@\{|\}/g,'')):0;if(!S.stashes[idx]){pErr(`error: stash@{${idx}} does not exist.`);return;}const st=S.stashes[idx];S.staged.push(`(from stash@{${idx}}: ${st.msg})`);pOk(`Applied stash@{${idx}}: ${st.msg}`);if(act==='pop'){S.stashes.splice(idx,1);pOk(`Dropped stash@{${idx}}`);}updateHeader();return;}
+    if(act==='drop'){const idxArg=tok[3];const idx=idxArg?parseInt(idxArg.replace(/stash@\{|\}/g,'')):0;if(!S.stashes[idx]){pErr(`error: stash@{${idx}} does not exist.`);return;}S.stashes.splice(idx,1);pOk(`Dropped stash@{${idx}}`);return;}
+    if(act==='clear'){S.stashes=[];pOk('All stashes cleared.');return;}
+    if(act==='branch'){const bn=tok[3];if(!bn){pErr('usage: git stash branch <n>');return;}if(!S.stashes.length){pErr('No stash found.');return;}const st=S.stashes.shift();S.branches[bn]=S.branches[st.branch]||null;S.prevBranch=S.HEAD;S.HEAD=bn;S.detached=false;S.staged.push(`(from stash: ${st.msg})`);pOk(`Switched to new branch '${bn}'.`);redraw();return;}
+    const mi=tok.findIndex(t=>t==='-m');const msg=mi!==-1&&tok[mi+1]?tok.slice(mi+1).join(' ').replace(/^["']|["']$/g,''):`WIP on ${S.HEAD}`;
+    S.stashes.unshift({msg,branch:S.HEAD,commitId:headCommit()?.id||null});S.staged=[];S.working=[];pOk(`Saved working directory: ${msg}`);return;
+  }
+  if(sub==='reset'){
+    const flags=tok.slice(2);const soft=flags.includes('--soft'),hard=flags.includes('--hard');
+    const target=flags.find(f=>!f.startsWith('-'))||'HEAD~1';const m=target.match(/^HEAD~(\d+)$/i);const n=m?parseInt(m[1]):1;
+    let cur=headCommit(),tgt=cur;
+    for(let i=0;i<n&&tgt;i++){const p=tgt.parents[0];tgt=S.commits.find(c=>c.id===p)||null;}
+    if(!tgt&&n>0){pErr(`error: HEAD~${n} does not exist.`);return;}
+    const toRm=[];let walk=cur;for(let i=0;i<n&&walk;i++){toRm.push(walk.id);walk=S.commits.find(c=>c.id===walk.parents[0])||null;}
+    S.commits=S.commits.filter(c=>!toRm.includes(c.id));
+    if(!S.detached)S.branches[S.HEAD]=tgt?.id||null;else S.HEAD=tgt?.id||null;
+    if(hard){S.staged=[];S.working=[];pWn(`HEAD is now at ${tgt?.id?.slice(0,7)||'null'} (hard reset)`);}
+    else if(soft){pOk(`Soft reset to ${tgt?.id?.slice(0,7)||'null'} — changes kept staged.`);}
+    else{S.staged=[];pOk(`Mixed reset to ${tgt?.id?.slice(0,7)||'null'} — changes unstaged.`);}
+    pushRL('reset',target);redraw();return;
+  }
+  if(sub==='revert'){
+    const arg=tok[2]||'HEAD';const tgt=arg.toUpperCase()==='HEAD'?headCommit():S.commits.find(c=>c.id.startsWith(arg));
+    if(!tgt){pErr(`error: '${arg}' not found.`);return;}
+    if(S.detached){pErr('error: cannot revert in detached HEAD state.');return;}
+    const id=makeId(),par=headCommit()?.id||null;
+    S.commits.push({id,msg:`Revert "${tgt.msg}"`,parents:par?[par]:[],branch:S.HEAD,author:S.config['user.name'],ts:now()});
+    S.branches[S.HEAD]=id;pushRL('revert',tgt.id);pOk(`[${S.HEAD} ${id}] Revert "${tgt.msg}"`);redraw();return;
+  }
+  if(sub==='tag'){
+    const flags=tok.slice(2);
+    if(!flags.length){const tags=Object.keys(S.tags);if(!tags.length){pDm('(no tags)');return;}tags.forEach(t=>pHl(t));return;}
+    if(flags[0]==='-d'){const n=flags[1];if(!S.tags[n]){pErr(`error: tag '${n}' not found.`);return;}delete S.tags[n];pOk(`Deleted tag '${n}'.`);redraw();return;}
+    const annotated=flags.includes('-a'),mi=flags.findIndex(f=>f==='-m');
+    const tagMsg=mi!==-1?flags.slice(mi+1).join(' ').replace(/^["']|["']$/g,''):'';
+    const name=flags.find(f=>!f.startsWith('-'))||flags[0];
+    const commitArg=flags.find((f,i)=>!f.startsWith('-')&&f!==name&&i>0);
+    const c=commitArg?S.commits.find(x=>x.id.startsWith(commitArg)):headCommit();
+    if(!c){pErr('error: no commit to tag.');return;}
+    S.tags[name]={commitId:c.id,annotated,msg:tagMsg};
+    pOk(`Tagged ${c.id.slice(0,7)} as '${name}'${annotated?` (annotated: "${tagMsg}")`:'.'}`);redraw();return;
+  }
+  if(sub==='log'){
+    const flags=tok.slice(2);const oneline=flags.includes('--oneline')||S.onelineMode;const graph=flags.includes('--graph');
+    const ni=flags.findIndex(f=>f==='-n');const limit=ni!==-1?parseInt(flags[ni+1]):Infinity;
+    const bArg=flags.find(f=>!f.startsWith('-')&&S.branches.hasOwnProperty(f));
+    let list=[...S.commits].reverse();
+    if(bArg){const ba=ancestors(S.branches[bArg]);list=list.filter(c=>ba.has(c.id));}
+    if(isFinite(limit))list=list.slice(0,limit);
+    if(!list.length){pDm('(no commits)');return;}
+    pSep();
+    list.forEach(c=>{
+      const brs=Object.entries(S.branches).filter(([,cid])=>cid===c.id).map(([b])=>b);
+      const tgs=Object.entries(S.tags).filter(([,t])=>t.commitId===c.id).map(([n])=>n);
+      if(oneline&&!graph){const refs=[...brs,...tgs.map(t=>'tag:'+t)].join(', ');print(`${c.id.slice(0,7)}  ${refs?'('+refs+')  ':''}${c.msg}`,'ou');}
+      else if(graph){const pre=c.parents.length>1?'*-.  ':'*    ';print(pre+c.id.slice(0,7)+'  '+c.msg,'ou');if(brs.length)pIn('|    ('+brs.join(', ')+')');  }
+      else{print(`commit ${c.id}`,'wn');if(brs.length)pIn(`Refs: (${brs.join(', ')})`);if(tgs.length)pHl(`Tags: ${tgs.join(', ')}`);print(`Author: ${c.author||'unknown'}`,'ou');print(`Date:   ${c.ts||''}`,'dm');print(`    ${c.msg}`,'ou');print('');}
+    });
+    pSep();return;
+  }
+  if(sub==='status'){
+    pIn(S.detached?`HEAD detached at ${S.HEAD?.slice(0,7)}`:`On branch ${S.HEAD}`);
+    const cur=headCommit();if(!cur)pDm('No commits yet.');else print(`HEAD → ${cur.id.slice(0,7)}: ${cur.msg}`,'ou');
+    if(S.staged.length){pOk('Changes to be committed:');S.staged.forEach(f=>pOk(`  staged: ${f}`));}else pDm('nothing to commit, working tree clean');
+    if(S.working.length){pWn('Changes not staged:');S.working.forEach(f=>pWn(`  modified: ${f}`));}
+    return;
+  }
+  if(sub==='diff'){pDm('(diff — no actual file content in this simulator)');if(S.staged.length){pWn('Staged:');S.staged.forEach(f=>print('  + '+f,'ok'));}else pDm('No staged changes.');return;}
+  if(sub==='show'){
+    const arg=tok[2]||'HEAD';const c=arg.toUpperCase()==='HEAD'?headCommit():S.commits.find(x=>x.id.startsWith(arg));
+    if(!c){pErr(`error: '${arg}' not found.`);return;}
+    pSep();print(`commit ${c.id}`,'wn');print(`Author: ${c.author||'unknown'}`,'ou');print(`Date:   ${c.ts||''}`,'dm');print(`    ${c.msg}`,'ou');pDm('(no file diff in simulator)');pSep();return;
+  }
+  if(sub==='reflog'){if(!S.reflog.length){pDm('(empty reflog)');return;}S.reflog.forEach((r,i)=>print(`HEAD@{${i}}  ${(r.to||'---').slice(0,7)}  ${r.action}: ${r.desc}`,'ou'));return;}
+  if(sub==='shortlog'){const by={};S.commits.forEach(c=>{const a=c.author||'unknown';if(!by[a])by[a]=[];by[a].push(c.msg);});Object.entries(by).forEach(([a,ms])=>{print(`${a} (${ms.length}):`,'wn');ms.forEach(m=>print(`      ${m}`,'ou'));});return;}
+  if(sub==='blame'){const f=tok[2]||'<file>';pDm(`blame for '${f}' (simulated)`);S.commits.slice(-5).forEach(c=>print(`${c.id.slice(0,7)}  (${(c.author||'?').padEnd(12)})  ${c.msg}`,'ou'));return;}
+  if(sub==='remote'){
+    const act=tok[2];
+    if(!act||act==='-v'){if(!Object.keys(S.remotes).length){pDm('(no remotes)');return;}Object.entries(S.remotes).forEach(([n,u])=>{print(`${n}\t${u} (fetch)`,'ou');print(`${n}\t${u} (push)`,'ou');});return;}
+    if(act==='add'){const[,,,n,u]=tok;if(!n||!u){pErr('usage: git remote add <n> <url>');return;}S.remotes[n]=u;pOk(`Remote '${n}' added.`);return;}
+    if(act==='remove'||act==='rm'){const n=tok[3];if(!S.remotes[n]){pErr(`error: No such remote '${n}'.`);return;}delete S.remotes[n];pOk(`Removed '${n}'.`);return;}
+    pErr(`git: 'remote ${act}' not supported.`);return;
+  }
+  if(sub==='fetch'){if(!Object.keys(S.remotes).length){pErr('fatal: no remotes configured.');return;}pIn(`Fetching from ${Object.keys(S.remotes)[0]}...`);pDm('(simulated)');pOk('Already up to date.');return;}
+  if(sub==='pull'){if(!Object.keys(S.remotes).length){pErr('fatal: no remotes configured.');return;}const rb=tok.includes('--rebase');pIn(`Pulling from ${Object.keys(S.remotes)[0]}...`);pDm('(simulated)');pOk(rb?'Successfully rebased from remote.':'Already up to date.');return;}
+  if(sub==='push'){if(!Object.keys(S.remotes).length){pErr('fatal: no remotes. Use  git remote add origin <url>  first.');return;}const force=tok.includes('--force')||tok.includes('-f');const del=tok.includes('--delete');const remote=tok[2]||'origin';const branch=tok[3]||S.HEAD;if(del){pWn(`Deleted remote branch ${branch} (simulated).`);return;}if(tok.includes('-u'))pOk(`Branch '${branch}' tracks remote '${branch}'.`);pOk(`${force?'Force-':''}Pushed to ${remote}/${branch} (simulated).`);return;}
+  if(sub==='config'){const flags=tok.slice(2);if(flags[0]==='--list'){Object.entries(S.config).forEach(([k,v])=>print(`${k}=${v}`,'ou'));return;}const key=flags[0];const val=flags.slice(1).join(' ').replace(/^["']|["']$/g,'');if(!key){pErr('usage: git config <key> <value>');return;}if(val){S.config[key]=val;pOk(`Set ${key} = ${val}`);}else print(S.config[key]||'(not set)','ou');return;}
+
+  pErr(`git: '${sub}' is not recognized. Type  help  to see all commands.`);
+}
+
+// ═══════════════════════════════════════════════════
+//  AUTOCOMPLETE
+// ═══════════════════════════════════════════════════
+const CMDS=[
+  'git init','git clone ','git add .','git add -p','git restore --staged ','git restore ',
+  'git commit -m ""','git commit --amend -m ""','git commit --amend --no-edit','git commit -am ""',
+  'git branch','git branch -v','git branch --merged','git branch --no-merged','git branch -d ','git branch -D ','git branch -m ',
+  'git checkout ','git checkout -b ','git switch ','git switch -c ','git switch -',
+  'git merge ','git merge --no-ff ','git merge --squash ','git merge --abort',
+  'git rebase ','git rebase -i HEAD~','git rebase --abort','git rebase --continue',
+  'git cherry-pick ','git stash','git stash list','git stash pop','git stash apply ','git stash drop ','git stash clear','git stash show','git stash branch ','git stash push -m ""',
+  'git reset HEAD~1','git reset --soft HEAD~','git reset --mixed HEAD~','git reset --hard HEAD~',
+  'git revert HEAD','git revert ',
+  'git tag','git tag -a  -m ""','git tag -d ','git tag ',
+  'git log','git log --oneline','git log --graph','git log --oneline --graph','git log -n ',
+  'git status','git diff','git show HEAD','git show ',
+  'git reflog','git shortlog','git blame ',
+  'git remote -v','git remote add origin ','git remote remove ',
+  'git fetch','git pull','git pull --rebase','git push','git push -u origin ','git push --force',
+  'git config user.name ""','git config user.email ""','git config --list',
+  'clear','reset','help',
+];
+
+const acEl=document.getElementById('ac');
+let acVis=[],acSel=-1;
+
+function showAC(v){
+  if(!v){hideAC();return;}
+  const m=CMDS.filter(c=>c.startsWith(v)&&c.trim()!==v.trim()).slice(0,7);
+  if(!m.length){hideAC();return;}
+  acVis=m;acSel=-1;
+  acEl.innerHTML=m.map((c,i)=>`<div class="ac-item" data-i="${i}"><em>${v}</em><span class="ac-item-rest">${c.slice(v.length)}</span></div>`).join('');
+  if(m.length){acEl.innerHTML+=`<div class="ac-hint">↑↓ navigate • Tab/Enter select • Esc close</div>`;}
+  acEl.querySelectorAll('.ac-item').forEach(el=>el.addEventListener('click',()=>{
+    cinput.value=acVis[+el.dataset.i].trimEnd();hideAC();cinput.focus();
+  }));
+  acEl.style.display='block';
+}
+function hideAC(){acEl.style.display='none';acSel=-1;acVis=[];}
+
+const cinput=document.getElementById('cinput');
+cinput.addEventListener('input',()=>showAC(cinput.value));
+cinput.addEventListener('keydown',e=>{
+  const items=acEl.querySelectorAll('.ac-item');
+  if(acEl.style.display==='block'&&items.length){
+    if(e.key==='ArrowDown'){e.preventDefault();acSel=(acSel+1)%items.length;items.forEach((el,i)=>el.classList.toggle('selected',i===acSel));return;}
+    if(e.key==='ArrowUp'){e.preventDefault();acSel=(acSel-1+items.length)%items.length;items.forEach((el,i)=>el.classList.toggle('selected',i===acSel));return;}
+    if(e.key==='Tab'||(e.key==='Enter'&&acSel>=0)){e.preventDefault();cinput.value=(acVis[acSel>=0?acSel:0]||'').trimEnd();hideAC();return;}
+  }
+  if(e.key==='Tab'){e.preventDefault();if(acVis[0])cinput.value=acVis[0].trimEnd();hideAC();return;}
+  if(e.key==='Enter'){const v=cinput.value;if(v.trim())cmdHist.unshift(v);histIdx=-1;hideAC();processCommand(v);cinput.value='';showAC('');}
+  if(e.key==='ArrowUp'){e.preventDefault();if(histIdx<cmdHist.length-1){histIdx++;cinput.value=cmdHist[histIdx];showAC(cinput.value);}}
+  if(e.key==='ArrowDown'){e.preventDefault();if(histIdx>0){histIdx--;cinput.value=cmdHist[histIdx];}else{histIdx=-1;cinput.value='';}showAC(cinput.value);}
+  if(e.key==='Escape')hideAC();
+});
+document.addEventListener('click',e=>{if(!cinput.contains(e.target)&&!acEl.contains(e.target))hideAC();});
+
+// keyboard shortcut for help
+document.addEventListener('keydown',e=>{
+  if(e.key==='?'&&document.activeElement!==cinput)openHelp();
+  if(e.key==='Escape')closeHelp();
+});
+
+let cmdHist=[],histIdx=-1;
+
+// ═══════════════════════════════════════════════════
+//  HEADER
+// ═══════════════════════════════════════════════════
+function updateHeader(){
+  const tag=document.getElementById('branch-tag');
+  const hb=document.getElementById('hbranch');
+  const sb=document.getElementById('staged-badge');
+  if(!S.inited){hb.textContent='not initialized';tag.className='branch-tag empty';}
+  else if(S.detached){hb.textContent='detached:'+S.HEAD?.slice(0,7);tag.className='branch-tag detached';}
+  else{hb.textContent=S.HEAD||'—';tag.className='branch-tag';}
+  sb.style.display=S.staged.length?'flex':'none';
+}
+
+function toggleOneline(){
+  S.onelineMode=!S.onelineMode;
+  document.getElementById('btn-ol').classList.toggle('active',S.onelineMode);
+}
+
+// ═══════════════════════════════════════════════════
+//  HELP MODAL
+// ═══════════════════════════════════════════════════
+function openHelp(){document.getElementById('help-overlay').classList.add('open');}
+function closeHelp(){document.getElementById('help-overlay').classList.remove('open');}
+function maybeClose(e){if(e.target===document.getElementById('help-overlay'))closeHelp();}
+
+// ═══════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════
+drawGraph();updateHeader();
+pIn('Welcome to GitViz — visual Git practice.');
+pDm('Run  git init  to begin. Press  ?  or click Commands for help.');
+pDm('↑ ↓ navigate history  •  Tab to autocomplete');
+print('');
+cinput.focus();
+</script>
+</body>
+</html>

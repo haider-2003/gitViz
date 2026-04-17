@@ -1,0 +1,114 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fresh, type RepoState } from "@/lib/gitState";
+import { createEngine, type LineClass } from "@/lib/gitCommands";
+
+import Header from "./Header";
+import TerminalPane, { type TerminalLine } from "./TerminalPane";
+import GraphPane from "./GraphPane";
+import HelpModal from "./HelpModal";
+
+export default function GitVisualizer() {
+  // Mutable repo state lives in a ref — commands mutate it in place,
+  // and we bump `revision` to tell React to rerender consumers.
+  const stateRef = useRef<RepoState>(fresh());
+  const [revision, setRevision] = useState(0);
+
+  const [lines, setLines] = useState<TerminalLine[]>([]);
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  const forceUpdate = useCallback(() => setRevision((r) => r + 1), []);
+
+  const print = useCallback((text: string, cls: LineClass = "ou") => {
+    setLines((prev) => [...prev, { text, cls }]);
+  }, []);
+
+  const clearTerminal = useCallback(() => setLines([]), []);
+
+  const openHelp = useCallback(() => setHelpOpen(true), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
+
+  // Build the engine once. Setter references from useState/useCallback are stable,
+  // so it's safe to capture them in the closure.
+  const engine = useMemo(
+    () =>
+      createEngine(stateRef, {
+        printer: {
+          print,
+          clearTerminal,
+          openHelp,
+        },
+        onStateChange: forceUpdate,
+        onReset: forceUpdate,
+      }),
+    [print, clearTerminal, openHelp, forceUpdate],
+  );
+
+  // One-time welcome banner.
+  useEffect(() => {
+    print("Welcome to GitViz — visual Git practice.", "in");
+    print("Run  git init  to begin. Press  ?  or click Commands for help.", "dm");
+    print("↑ ↓ navigate history  •  Tab to autocomplete", "dm");
+    print("", "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Global keyboard shortcuts: `?` opens help (when not typing), Esc closes.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const active = document.activeElement;
+      const isInput =
+        active?.tagName === "INPUT" || active?.tagName === "TEXTAREA";
+      if (e.key === "?" && !isInput) {
+        setHelpOpen(true);
+      }
+      if (e.key === "Escape") {
+        setHelpOpen(false);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const handleSubmit = useCallback(
+    (value: string) => engine.processCommand(value),
+    [engine],
+  );
+
+  const handleToggleOneline = useCallback(() => {
+    stateRef.current.onelineMode = !stateRef.current.onelineMode;
+    forceUpdate();
+  }, [forceUpdate]);
+
+  // The "reset" button wipes repo state + palette (no command echo),
+  // matching the original HTML's doReset() behavior.
+  const handleTerminalReset = useCallback(() => {
+    engine.doReset();
+  }, [engine]);
+
+  const S = stateRef.current;
+
+  return (
+    <>
+      <Header
+        state={S}
+        onelineMode={S.onelineMode}
+        onToggleOneline={handleToggleOneline}
+        onOpenHelp={openHelp}
+      />
+
+      <div className="workspace">
+        <TerminalPane
+          lines={lines}
+          onSubmit={handleSubmit}
+          onClearClick={clearTerminal}
+          onResetClick={handleTerminalReset}
+        />
+        <GraphPane state={S} revision={revision} />
+      </div>
+
+      <HelpModal open={helpOpen} onClose={closeHelp} />
+    </>
+  );
+}
