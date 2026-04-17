@@ -76,6 +76,56 @@ let knownEdges = new Set<string>();
 let animations: Animation[] = [];
 let rafHandle: number | null = null;
 
+// ─── HOVER STATE ───────────────────────────────────────────
+type HoverState = {
+  current: number; // 0..1
+  target: 0 | 1;
+  startTime: number;
+  startValue: number;
+};
+const hoverStates = new Map<string, HoverState>();
+const HOVER_DURATION = 180;
+
+function updateHoverTargets(
+  hoveredId: string | null,
+  allIds: Set<string>,
+  now: number,
+) {
+  // Commits still present: set their target.
+  for (const id of allIds) {
+    const desired: 0 | 1 = id === hoveredId ? 1 : 0;
+    const cur = hoverStates.get(id);
+    if (cur && cur.target === desired) continue;
+    hoverStates.set(id, {
+      current: cur?.current ?? 0,
+      target: desired,
+      startTime: now,
+      startValue: cur?.current ?? 0,
+    });
+  }
+  // Drop any hover state for commits that no longer exist.
+  for (const id of Array.from(hoverStates.keys())) {
+    if (!allIds.has(id)) hoverStates.delete(id);
+  }
+}
+
+function tickHover(now: number): boolean {
+  let running = false;
+  for (const [id, h] of hoverStates) {
+    const elapsed = now - h.startTime;
+    const t = Math.min(1, elapsed / HOVER_DURATION);
+    const eased = easeOut(t);
+    h.current = h.startValue + (h.target - h.startValue) * eased;
+    if (t < 1) running = true;
+    else if (h.target === 0) hoverStates.delete(id);
+  }
+  return running;
+}
+
+function getHoverProgress(id: string): number {
+  return hoverStates.get(id)?.current ?? 0;
+}
+
 function edgeKey(parentId: string, childId: string) {
   return `${parentId}->${childId}`;
 }
@@ -117,6 +167,7 @@ export function resetAnimations() {
   knownCommits = new Set();
   knownEdges = new Set();
   animations = [];
+  hoverStates.clear();
   if (rafHandle !== null) {
     cancelAnimationFrame(rafHandle);
     rafHandle = null;
@@ -303,12 +354,18 @@ function drawPartialBezier(
 }
 
 // ─── MAIN DRAW ─────────────────────────────────────────────
-export type DrawResult = { commitCount: number };
+export type NodeHit = { id: string; x: number; y: number; r: number };
+export type DrawResult = {
+  commitCount: number;
+  nodes: NodeHit[];
+};
+export type DrawOptions = { hoveredId?: string | null; zoom?: number };
 
 export function drawGraph(
   canvas: HTMLCanvasElement,
   wrap: HTMLElement,
   S: RepoState,
+  opts?: DrawOptions,
 ): DrawResult {
   if (rafHandle !== null) {
     cancelAnimationFrame(rafHandle);
@@ -316,31 +373,42 @@ export function drawGraph(
   }
 
   const ctx = canvas.getContext("2d")!;
-  if (!ctx) return { commitCount: 0 };
+  if (!ctx) return { commitCount: 0, nodes: [] };
 
   const { colOf, minCol, maxCol } = buildLayout(S);
   const rows = S.commits.length;
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   const treeWidth = (maxCol - minCol) * COL;
-  const W = Math.max(wrap.clientWidth, treeWidth + 500);
-  const H = Math.max(wrap.clientHeight, PT + rows * ROW + 100);
+  const zoom = Math.max(0.1, opts?.zoom ?? 1);
 
-  canvas.width = W * dpr;
-  canvas.height = H * dpr;
-  canvas.style.width = W + "px";
-  canvas.style.height = H + "px";
+  // Slack on every side so the user can always drag-pan, even with an empty
+  // or small graph. The values give roughly half a viewport of travel in
+  // each direction on a standard-sized panel.
+  const HSLACK = 500;
+  const VSLACK = 300;
+  // W/H are the graph's *logical* dimensions — drawing happens in this space.
+  // CSS size is logical × zoom; backing store is CSS × dpr.
+  const W = Math.max(wrap.clientWidth, treeWidth + 500) + HSLACK * 2;
+  const H = Math.max(wrap.clientHeight, PT + rows * ROW + 100) + VSLACK * 2;
+  const Wcss = W * zoom;
+  const Hcss = H * zoom;
+
+  canvas.width = Math.round(Wcss * dpr);
+  canvas.height = Math.round(Hcss * dpr);
+  canvas.style.width = Wcss + "px";
+  canvas.style.height = Hcss + "px";
 
   if (!S.inited) {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#d4d4d8";
     ctx.font = "500 13px Geist Mono,monospace";
     ctx.textAlign = "center";
     ctx.fillText("run  git init  to start", W / 2, H / 2);
-    return { commitCount: 0 };
+    return { commitCount: 0, nodes: [] };
   }
   if (!rows) {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#d4d4d8";
     ctx.font = "13px Geist Mono,monospace";
@@ -350,7 +418,7 @@ export function drawGraph(
       W / 2,
       H / 2,
     );
-    return { commitCount: 0 };
+    return { commitCount: 0, nodes: [] };
   }
 
   // Detect new commits and edges for animation.
@@ -379,11 +447,24 @@ export function drawGraph(
   const cxOf = (id: string) => centerX + (colOf[id] ?? 0) * COL;
   const cyOf = (id: string) => PT + rowOf[id] * ROW;
 
+  // Hit-test data for the caller.
+  const nodes: NodeHit[] = S.commits.map((c) => ({
+    id: c.id,
+    x: cxOf(c.id),
+    y: cyOf(c.id),
+    r: CR,
+  }));
+
+  // Sync hover targets against the current set of commits.
+  const allIds = new Set(S.commits.map((c) => c.id));
+  updateHoverTargets(opts?.hoveredId ?? null, allIds, now);
+
   function renderFrame() {
     const frameNow = performance.now();
     const animating = tickAnimations(frameNow);
+    const hoverAnimating = tickHover(frameNow);
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
     // ── EDGES ────────────────────────────────────────────
@@ -539,6 +620,10 @@ export function drawGraph(
         ctx.fillText("HEAD (detached)", x, dy);
       }
 
+      // Hover — eased radius bump + subtle ring.
+      const hoverT = getHoverProgress(c.id);
+      const radius = CR * (1 + hoverT * 0.14);
+
       // ── HEAD GLOW ──────────────────────────────────
       if (isHead) {
         const [r, g, b] = hexToRgb(col);
@@ -546,7 +631,7 @@ export function drawGraph(
         ctx.shadowBlur = 24;
         ctx.shadowOffsetY = 0;
         ctx.beginPath();
-        ctx.arc(x, y, CR + 5, 0, Math.PI * 2);
+        ctx.arc(x, y, radius + 5, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(${r},${g},${b},0.15)`;
         ctx.lineWidth = 2;
         ctx.stroke();
@@ -554,27 +639,37 @@ export function drawGraph(
         ctx.shadowBlur = 0;
       }
 
+      // Hover ring — fades in with the scale.
+      if (hoverT > 0.01) {
+        const [r, g, b] = hexToRgb(col);
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${r},${g},${b},${0.22 * hoverT})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
       // ── COMMIT CIRCLE ──────────────────────────────
       ctx.shadowColor = "rgba(0,0,0,0.10)";
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 12 + hoverT * 6;
       ctx.shadowOffsetY = 3;
       ctx.beginPath();
-      ctx.arc(x, y, CR, 0, Math.PI * 2);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
 
       if (isHead) {
-        const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, CR);
+        const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, radius);
         const [r, g, b] = hexToRgb(col);
         grad.addColorStop(0, `rgba(${r},${g},${b},0.85)`);
         grad.addColorStop(1, col);
         ctx.fillStyle = grad;
       } else if (isMerge) {
-        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, CR);
+        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, radius);
         const [r, g, b] = hexToRgb(col);
         grad.addColorStop(0, `rgba(${r},${g},${b},0.7)`);
         grad.addColorStop(1, `rgba(${r},${g},${b},0.9)`);
         ctx.fillStyle = grad;
       } else {
-        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, CR);
+        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, radius);
         grad.addColorStop(0, "#ffffff");
         grad.addColorStop(1, "#f8f8fa");
         ctx.fillStyle = grad;
@@ -596,7 +691,7 @@ export function drawGraph(
 
       // Inner highlight (gloss).
       ctx.beginPath();
-      ctx.arc(x, y - 2, CR - 5, -Math.PI * 0.8, -Math.PI * 0.2);
+      ctx.arc(x, y - 2, radius - 5, -Math.PI * 0.8, -Math.PI * 0.2);
       ctx.strokeStyle = "rgba(255,255,255,0.4)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -648,11 +743,11 @@ export function drawGraph(
       ctx.restore();
     });
 
-    if (animating) {
+    if (animating || hoverAnimating) {
       rafHandle = requestAnimationFrame(renderFrame);
     }
   }
 
   renderFrame();
-  return { commitCount: rows };
+  return { commitCount: rows, nodes };
 }

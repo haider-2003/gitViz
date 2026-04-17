@@ -34,3 +34,53 @@ body:has(.gitviz-root) {
 .scrollbar-graph::-webkit-scrollbar        { width: 5px; height: 5px; }
 .scrollbar-graph::-webkit-scrollbar-track  { background: transparent; }
 .scrollbar-graph::-webkit-scrollbar-thumb  { background: #d4d4d8; border-radius: 3px; }
+
+/* ── Pan cursors ────────────────────────────────────────────
+   Custom dark-outlined hand cursors so the affordance is
+   clearly visible on any background, regardless of OS theme.
+   Hotspot set to the center of the palm. */
+.cursor-grab-dark {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 24 24' fill='%23ffffff' stroke='%23111111' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M18 11V6a2 2 0 0 0-4 0'/><path d='M14 10V4a2 2 0 0 0-4 0v2'/><path d='M10 10.5V6a2 2 0 0 0-4 0v8'/><path d='M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/></svg>") 12 10,
+    grab;
+}
+/* ── Entrance animations ────────────────────────────────────
+   Used by the landing page. Custom easing (easeOutExpo-ish)
+   gives a natural decelerating arrival rather than a linear slide. */
+@keyframes gv-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes gv-scale-in {
+  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+@keyframes gv-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.45); }
+  70%      { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+}
+
+.hero-reveal {
+  animation: gv-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.hero-scale-in {
+  animation: gv-scale-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.gv-pulse {
+  animation: gv-pulse 2.4s ease-out infinite;
+}
+
+/* Respect users who've asked for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .hero-reveal,
+  .hero-scale-in,
+  .gv-pulse {
+    animation: none !important;
+  }
+}
+
+.cursor-grabbing-dark {
+  cursor:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 24 24' fill='%23ffffff' stroke='%23111111' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M18 11V9a2 2 0 0 0-4 0v2'/><path d='M14 10V8a2 2 0 0 0-4 0v2'/><path d='M10 9.5V9a2 2 0 0 0-4 0v5'/><path d='M18 11a2 2 0 0 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15'/></svg>") 12 12,
+    grabbing;
+}

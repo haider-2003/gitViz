@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Reveal from "@/components/Reveal";
 
 export default function LandingPage() {
   return (
@@ -45,10 +46,10 @@ function LandingNav() {
           </a>
           <Link
             href="/play"
-            className="ml-2 inline-flex items-center gap-1.5 rounded-md bg-zinc-950 px-3.5 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+            className="group ml-2 inline-flex items-center gap-1.5 rounded-md bg-zinc-950 px-3.5 py-1.5 text-sm font-medium text-white transition-all duration-200 ease-out hover:bg-zinc-800 hover:shadow-[0_6px_20px_-8px_rgba(24,24,27,0.4)] active:translate-y-px"
           >
             Open sandbox
-            <ArrowRight />
+            <ArrowRight className="transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
           </Link>
         </div>
       </div>
@@ -61,41 +62,79 @@ function LandingNav() {
 function Hero() {
   return (
     <section className="relative overflow-hidden px-6 pt-20 pb-12 md:pt-32 md:pb-16">
+      {/* Soft ambient backdrop — static gradient, no motion. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[520px] opacity-70"
+        style={{
+          background:
+            "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(0,112,243,0.06), transparent 70%), radial-gradient(ellipse 40% 35% at 80% 10%, rgba(16,185,129,0.05), transparent 70%)",
+        }}
+      />
+
       <div className="mx-auto max-w-4xl text-center">
-        <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[11px] text-zinc-600">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+        <div
+          className="hero-reveal mb-7 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[11px] text-zinc-600"
+          style={{ animationDelay: "60ms" }}
+        >
+          <span className="gv-pulse h-1.5 w-1.5 rounded-full bg-emerald-500" />
           In your browser — no install
         </div>
 
         <h1 className="text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl">
-          Practice Git.
+          <span
+            className="hero-reveal inline-block"
+            style={{ animationDelay: "140ms" }}
+          >
+            Practice Git.
+          </span>
           <br />
-          <span className="text-zinc-400">See every commit.</span>
+          <span
+            className="hero-reveal inline-block text-zinc-400"
+            style={{ animationDelay: "240ms" }}
+          >
+            See every commit.
+          </span>
         </h1>
 
-        <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-zinc-600 md:text-lg">
+        <p
+          className="hero-reveal mx-auto mt-6 max-w-xl text-base leading-relaxed text-zinc-600 md:text-lg"
+          style={{ animationDelay: "360ms" }}
+        >
           An interactive sandbox where every command you type draws itself
           as a graph. Learn branches, merges, and rebases by doing — not
           guessing.
         </p>
 
-        <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+        <div
+          className="hero-reveal mt-9 flex flex-wrap items-center justify-center gap-3"
+          style={{ animationDelay: "480ms" }}
+        >
           <Link
             href="/play"
-            className="group inline-flex items-center gap-2 rounded-md bg-[#0070F3] px-5 py-2.5 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset] transition-colors hover:bg-[#0061d5]"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-md bg-[#0070F3] px-5 py-2.5 text-sm font-medium text-white shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset,0_2px_8px_-2px_rgba(0,112,243,0.4)] transition-all duration-200 ease-out hover:bg-[#0061d5] hover:shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset,0_10px_30px_-8px_rgba(0,112,243,0.55)] active:translate-y-px active:shadow-[0_1px_0_0_rgba(255,255,255,0.3)_inset,0_2px_6px_-2px_rgba(0,112,243,0.4)]"
           >
-            Start practicing
-            <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
+            {/* Sheen sweep on hover */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+            />
+            <span className="relative">Start practicing</span>
+            <ArrowRight className="relative transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
           </Link>
           <a
             href="#features"
-            className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-800 transition-colors hover:border-zinc-300 hover:bg-zinc-50"
+            className="group inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-800 transition-all duration-200 ease-out hover:-translate-y-px hover:border-zinc-300 hover:bg-zinc-50 hover:shadow-[0_6px_16px_-10px_rgba(0,0,0,0.2)] active:translate-y-0"
           >
             See the features
+            <ArrowDown className="transition-transform duration-200 ease-out group-hover:translate-y-0.5" />
           </a>
         </div>
 
-        <div className="mt-10 flex items-center justify-center gap-6 font-mono text-[11px] text-zinc-400">
+        <div
+          className="hero-reveal mt-10 flex flex-wrap items-center justify-center gap-6 font-mono text-[11px] text-zinc-400"
+          style={{ animationDelay: "620ms" }}
+        >
           <span className="inline-flex items-center gap-1.5">
             <Kbd>?</Kbd> commands
           </span>
@@ -118,7 +157,10 @@ function Preview() {
   return (
     <section className="px-6 pb-24">
       <div className="mx-auto max-w-5xl">
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_30px_60px_-12px_rgba(0,0,0,0.08)]">
+        <div
+          className="hero-scale-in group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_30px_60px_-12px_rgba(0,0,0,0.08)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.03),0_40px_80px_-16px_rgba(0,0,0,0.12)]"
+          style={{ animationDelay: "720ms" }}
+        >
           {/* window chrome */}
           <div className="flex h-9 items-center gap-1.5 border-b border-zinc-200 bg-zinc-50 px-3">
             <span className="h-2.5 w-2.5 rounded-full bg-zinc-300" />
@@ -304,13 +346,50 @@ function BranchTag({
 /* ─────────────────────── Features grid ─────────────────────── */
 
 function Features() {
+  const items: Array<{
+    icon: React.ReactNode;
+    title: string;
+    desc: string;
+  }> = [
+    {
+      icon: <IconGraph />,
+      title: "Live graph",
+      desc: "Commits become nodes. Branches trace through them. Merges connect. Every command redraws the tree — instantly.",
+    },
+    {
+      icon: <IconTerminal />,
+      title: "Real commands",
+      desc: "init, commit, branch, checkout, merge, rebase, cherry-pick, reset, stash — the same verbs and flags you use daily.",
+    },
+    {
+      icon: <IconBolt />,
+      title: "Zero setup",
+      desc: "Open the page, start typing. No install, no repo to clone, no directory to cd into. Fresh sandbox on every reload.",
+    },
+    {
+      icon: <IconKey />,
+      title: "Keyboard-first",
+      desc: "Arrow-key history. Tab completion. Press ? for the command reference. Built to feel like a terminal, not a form.",
+    },
+    {
+      icon: <IconEye />,
+      title: "Always visible",
+      desc: "The graph sits beside the terminal. See HEAD move. See branches split. See rebases rewrite history in place.",
+    },
+    {
+      icon: <IconReset />,
+      title: "Safe to break",
+      desc: "Nothing is real. Reset wipes everything. Try the dangerous commands — force reset, rebase, amend — without fear.",
+    },
+  ];
+
   return (
     <section
       id="features"
       className="border-t border-zinc-200 px-6 py-20 md:py-28"
     >
       <div className="mx-auto max-w-6xl">
-        <div className="max-w-2xl">
+        <Reveal className="max-w-2xl">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             Features
           </div>
@@ -321,39 +400,14 @@ function Features() {
             Every feature exists to make one thing easier: understanding what
             Git actually does when you run a command.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="mt-12 grid gap-px rounded-xl border border-zinc-200 bg-zinc-200 overflow-hidden md:grid-cols-3">
-          <FeatureCard
-            icon={<IconGraph />}
-            title="Live graph"
-            desc="Commits become nodes. Branches trace through them. Merges connect. Every command redraws the tree — instantly."
-          />
-          <FeatureCard
-            icon={<IconTerminal />}
-            title="Real commands"
-            desc="init, commit, branch, checkout, merge, rebase, cherry-pick, reset, stash — the same verbs and flags you use daily."
-          />
-          <FeatureCard
-            icon={<IconBolt />}
-            title="Zero setup"
-            desc="Open the page, start typing. No install, no repo to clone, no directory to cd into. Fresh sandbox on every reload."
-          />
-          <FeatureCard
-            icon={<IconKey />}
-            title="Keyboard-first"
-            desc="Arrow-key history. Tab completion. Press ? for the command reference. Built to feel like a terminal, not a form."
-          />
-          <FeatureCard
-            icon={<IconEye />}
-            title="Always visible"
-            desc="The graph sits beside the terminal. See HEAD move. See branches split. See rebases rewrite history in place."
-          />
-          <FeatureCard
-            icon={<IconReset />}
-            title="Safe to break"
-            desc="Nothing is real. Reset wipes everything. Try the dangerous commands — force reset, rebase, amend — without fear."
-          />
+        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 md:grid-cols-3">
+          {items.map((it, i) => (
+            <Reveal key={it.title} delay={i * 70}>
+              <FeatureCard icon={it.icon} title={it.title} desc={it.desc} />
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
@@ -370,8 +424,8 @@ function FeatureCard({
   desc: string;
 }) {
   return (
-    <div className="group relative bg-white p-7 transition-colors hover:bg-zinc-50/70">
-      <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition-colors group-hover:border-zinc-300">
+    <div className="group relative h-full overflow-hidden bg-white p-7 transition-colors duration-300 ease-out hover:bg-zinc-50/70">
+      <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition-all duration-300 ease-out group-hover:-translate-y-0.5 group-hover:border-zinc-300 group-hover:text-[#0070F3] group-hover:shadow-[0_6px_16px_-10px_rgba(0,0,0,0.18)]">
         {icon}
       </div>
       <h3 className="text-base font-semibold tracking-tight text-zinc-950">
@@ -385,37 +439,44 @@ function FeatureCard({
 /* ─────────────────────── How it works ─────────────────────── */
 
 function HowItWorks() {
+  const steps = [
+    {
+      n: "01",
+      title: "Type a command",
+      desc: "Start with git init. Then commit, branch, merge. The terminal accepts the same syntax you'd use in a shell.",
+    },
+    {
+      n: "02",
+      title: "Watch the graph",
+      desc: "The panel on the right redraws on every command. A new commit is a new node. A branch is a new line. A merge is a new joint.",
+    },
+    {
+      n: "03",
+      title: "Learn the pattern",
+      desc: "Seeing the shape of a rebase or a fast-forward merge once is worth reading about it three times. Repeat until obvious.",
+    },
+  ];
   return (
     <section
       id="how"
       className="border-t border-zinc-200 bg-zinc-50/50 px-6 py-20 md:py-28"
     >
       <div className="mx-auto max-w-6xl">
-        <div className="max-w-2xl">
+        <Reveal className="max-w-2xl">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500">
             How it works
           </div>
           <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">
             Three steps. Then muscle memory.
           </h2>
-        </div>
+        </Reveal>
 
         <div className="mt-12 grid gap-6 md:grid-cols-3">
-          <Step
-            n="01"
-            title="Type a command"
-            desc="Start with git init. Then commit, branch, merge. The terminal accepts the same syntax you'd use in a shell."
-          />
-          <Step
-            n="02"
-            title="Watch the graph"
-            desc="The panel on the right redraws on every command. A new commit is a new node. A branch is a new line. A merge is a new joint."
-          />
-          <Step
-            n="03"
-            title="Learn the pattern"
-            desc="Seeing the shape of a rebase or a fast-forward merge once is worth reading about it three times. Repeat until obvious."
-          />
+          {steps.map((s, i) => (
+            <Reveal key={s.n} delay={120 + i * 90}>
+              <Step n={s.n} title={s.title} desc={s.desc} />
+            </Reveal>
+          ))}
         </div>
       </div>
     </section>
@@ -432,8 +493,10 @@ function Step({
   desc: string;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-7">
-      <div className="font-mono text-xs font-medium text-[#0070F3]">{n}</div>
+    <div className="group h-full rounded-lg border border-zinc-200 bg-white p-7 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_12px_32px_-20px_rgba(0,0,0,0.2)]">
+      <div className="font-mono text-xs font-medium text-[#0070F3] transition-colors duration-300 ease-out group-hover:text-[#0061d5]">
+        {n}
+      </div>
       <h3 className="mt-3 text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-zinc-600">{desc}</p>
     </div>
@@ -445,7 +508,7 @@ function Step({
 function FinalCta() {
   return (
     <section className="border-t border-zinc-200 px-6 py-24 md:py-32">
-      <div className="mx-auto max-w-3xl text-center">
+      <Reveal className="mx-auto max-w-3xl text-center">
         <h2 className="text-4xl font-semibold tracking-tight md:text-5xl">
           Ready to see Git?
         </h2>
@@ -455,13 +518,17 @@ function FinalCta() {
         <div className="mt-9">
           <Link
             href="/play"
-            className="group inline-flex items-center gap-2 rounded-md bg-zinc-950 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-md bg-zinc-950 px-5 py-2.5 text-sm font-medium text-white shadow-[0_2px_6px_-2px_rgba(0,0,0,0.3)] transition-all duration-200 ease-out hover:bg-zinc-800 hover:shadow-[0_14px_30px_-10px_rgba(0,0,0,0.4)] active:translate-y-px"
           >
-            Open the sandbox
-            <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+            />
+            <span className="relative">Open the sandbox</span>
+            <ArrowRight className="relative transition-transform duration-200 ease-out group-hover:translate-x-0.5" />
           </Link>
         </div>
-      </div>
+      </Reveal>
     </section>
   );
 }
@@ -531,6 +598,23 @@ function ArrowRight({ className = "" }: { className?: string }) {
     >
       <line x1="3" y1="8" x2="13" y2="8" />
       <polyline points="9,4 13,8 9,12" />
+    </svg>
+  );
+}
+
+function ArrowDown({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className={`h-3.5 w-3.5 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="8" y1="3" x2="8" y2="13" />
+      <polyline points="4,9 8,13 12,9" />
     </svg>
   );
 }
