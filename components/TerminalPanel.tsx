@@ -6,6 +6,20 @@ import { CMDS } from "@/lib/commandList";
 
 export type TerminalLine = { text: string; cls: LineClass };
 
+/** Maps each LineClass token to Tailwind text-color (+ optional style) utilities. */
+const LINE_COLORS: Record<string, string> = {
+  p: "text-blue-400",
+  ok: "text-green-400",
+  er: "text-red-400",
+  in: "text-cyan-300",
+  wn: "text-amber-400",
+  dm: "text-zinc-700 italic",
+  ou: "text-zinc-500",
+  hl: "text-purple-400",
+  sep: "text-zinc-800 tracking-widest",
+  "": "text-zinc-500",
+};
+
 type Props = {
   lines: TerminalLine[];
   onSubmit: (value: string) => void;
@@ -13,7 +27,7 @@ type Props = {
   onResetClick: () => void;
 };
 
-export default function TerminalPane({
+export default function TerminalPanel({
   lines,
   onSubmit,
   onClearClick,
@@ -46,10 +60,7 @@ export default function TerminalPane({
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       const t = e.target as Node;
-      if (
-        !inputRef.current?.contains(t) &&
-        !acRef.current?.contains(t)
-      ) {
+      if (!inputRef.current?.contains(t) && !acRef.current?.contains(t)) {
         setAcVis([]);
         setAcSel(-1);
       }
@@ -64,7 +75,9 @@ export default function TerminalPane({
       setAcSel(-1);
       return;
     }
-    const m = CMDS.filter((c) => c.startsWith(v) && c.trim() !== v.trim()).slice(0, 7);
+    const m = CMDS.filter(
+      (c) => c.startsWith(v) && c.trim() !== v.trim(),
+    ).slice(0, 7);
     setAcVis(m);
     setAcSel(-1);
   }
@@ -158,48 +171,74 @@ export default function TerminalPane({
   }
 
   return (
-    <div className="pane pane-terminal">
-      <div className="pane-bar pane-bar-terminal">
-        <div className="pane-bar-left">
-          <div className="mac-dots">
-            <div className="mac-dot mac-dot-r" />
-            <div className="mac-dot mac-dot-y" />
-            <div className="mac-dot mac-dot-g" />
+    <div className="overflow-hidden flex flex-col relative bg-[#0a0a0b]">
+      {/* ── Panel bar ── */}
+      <div className="h-9 flex items-center justify-between px-4 shrink-0 bg-[#0f0f11] border-b border-[#1f1f23]">
+        <div className="flex items-center gap-1.75">
+          {/* macOS-style traffic lights */}
+          <div className="flex gap-1.25 items-center">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
           </div>
-          <span className="pane-title pane-title-terminal">terminal</span>
+          <span className="text-[11px] font-medium tracking-[0.06em] uppercase font-mono text-zinc-600">
+            terminal
+          </span>
         </div>
-        <div className="pane-bar-right">
-          <button className="pbar-btn" onClick={onClearClick}>
+        <div className="flex gap-1.5">
+          <button
+            className="font-mono text-[10px] text-zinc-600 bg-transparent border border-[#2a2a2e] px-2 py-0.5 rounded-[3px] cursor-pointer transition-all duration-120 hover:text-zinc-400 hover:border-zinc-700"
+            onClick={onClearClick}
+          >
             clear
           </button>
-          <button className="pbar-btn" onClick={onResetClick}>
+          <button
+            className="font-mono text-[10px] text-zinc-600 bg-transparent border border-[#2a2a2e] px-2 py-0.5 rounded-[3px] cursor-pointer transition-all duration-120 hover:text-zinc-400 hover:border-zinc-700"
+            onClick={onResetClick}
+          >
             reset
           </button>
         </div>
       </div>
 
-      <div className="terminal" ref={termRef}>
+      {/* ── Terminal output ── */}
+      <div
+        ref={termRef}
+        className="flex-1 overflow-y-auto py-4 px-4.5 pb-2 font-mono bg-[#0a0a0b] scrollbar-dark"
+      >
         {lines.map((ln, i) =>
           ln.text === "" ? (
             <div key={i} style={{ height: 6 }} />
           ) : (
-            <div key={i} className={"line " + ln.cls}>
+            <div
+              key={i}
+              className={`text-[12.5px] leading-[1.8] whitespace-pre-wrap break-all ${LINE_COLORS[ln.cls] ?? "text-zinc-500"}`}
+            >
+              {ln.cls === "p" && (
+                <span className="text-green-400 font-semibold">$ </span>
+              )}
               {ln.text}
             </div>
           ),
         )}
       </div>
 
-      <div className="input-wrap">
+      {/* ── Input area ── */}
+      <div className="relative shrink-0">
+        {/* Autocomplete dropdown */}
         <div
-          className="autocomplete"
           ref={acRef}
+          className="absolute bottom-full left-0 right-0 z-50 bg-[#111114] border border-[#2a2a2e] border-b-0 rounded-t-md overflow-hidden shadow-[0_-8px_24px_rgba(0,0,0,0.4)]"
           style={{ display: acVis.length ? "block" : "none" }}
         >
           {acVis.map((c, i) => (
             <div
               key={c + i}
-              className={"ac-item" + (i === acSel ? " selected" : "")}
+              className={`px-4 py-1.75 font-mono text-[11.5px] cursor-pointer flex items-center gap-1.5 transition-colors duration-80 ${
+                i === acSel
+                  ? "bg-[#1a1a1f] text-zinc-400"
+                  : "text-zinc-600 hover:bg-[#1a1a1f] hover:text-zinc-400"
+              }`}
               onClick={() => {
                 setValue(c.trimEnd());
                 setAcVis([]);
@@ -207,18 +246,23 @@ export default function TerminalPane({
                 inputRef.current?.focus();
               }}
             >
-              <em>{value}</em>
-              <span className="ac-item-rest">{c.slice(value.length)}</span>
+              <em className="text-blue-400 not-italic font-medium">{value}</em>
+              <span className="text-zinc-700">{c.slice(value.length)}</span>
             </div>
           ))}
           {acVis.length > 0 && (
-            <div className="ac-hint">↑↓ navigate • Tab/Enter select • Esc close</div>
+            <div className="px-4 py-1.25 text-[10px] text-[#2a2a2e] border-t border-[#1a1a1f] font-mono">
+              ↑↓ navigate • Tab/Enter select • Esc close
+            </div>
           )}
         </div>
-        <div className="input-row">
-          <span className="psym">›</span>
+
+        {/* Input row */}
+        <div className="flex items-center gap-2.5 px-4 py-2.5 border-t border-[#1f1f23] bg-[#0d0d10]">
+          <span className="font-mono text-[13px] font-semibold text-green-400 shrink-0 select-none">
+            ›
+          </span>
           <input
-            id="cinput"
             ref={inputRef}
             type="text"
             placeholder="git init"
@@ -227,23 +271,31 @@ export default function TerminalPane({
             value={value}
             onChange={handleChange}
             onKeyDown={handleKey}
+            className="flex-1 bg-transparent border-0 outline-none font-mono text-[12.5px] text-zinc-200 caret-green-400 placeholder:text-zinc-700"
           />
         </div>
       </div>
 
-      <div className="hint-bar">
-        <span className="hint-item">
-          <span className="k">↑↓</span> history
-        </span>
-        <span className="hint-item">
-          <span className="k">Tab</span> autocomplete
-        </span>
-        <span className="hint-item">
-          <span className="k">?</span> commands
-        </span>
-        <span className="hint-item">
-          <span className="k">Esc</span> dismiss
-        </span>
+      {/* ── Hint bar ── */}
+      <div className="px-4 py-1.25 bg-[#080809] border-t border-[#141416] flex gap-4 shrink-0">
+        {(
+          [
+            ["↑↓", "history"],
+            ["Tab", "autocomplete"],
+            ["?", "commands"],
+            ["Esc", "dismiss"],
+          ] as const
+        ).map(([key, label]) => (
+          <span
+            key={key}
+            className="flex items-center gap-1.25 font-mono text-[10px] text-zinc-700"
+          >
+            <span className="bg-[#1a1a1f] border border-[#2a2a2e] border-b-2 text-zinc-600 px-1.25 rounded-[3px] text-[9px]">
+              {key}
+            </span>
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );

@@ -1,6 +1,5 @@
-import type { RepoState } from "./gitState";
+﻿import type { RepoState } from "./gitState";
 
-// Vivid-but-controlled light-mode palette for branch colors.
 const PALETTE = [
   "#0070f3",
   "#00a86b",
@@ -14,15 +13,11 @@ const PALETTE = [
   "#ef4444",
 ];
 
-// Layout constants — shared with draw().
-const ROW = 72;
-const COL = 130;
-const PL = 72; // pad-left
-const PT = 96; // pad-top
-const CR = 14; // commit radius
+const ROW = 80;
+const COL = 140;
+const PT = 100;
+const CR = 16;
 
-// Persistent branch→color map so colors are stable across redraws.
-// Kept module-scoped (matches the original implementation).
 const BCC: Record<string, string> = {};
 let colorIdx = 0;
 
@@ -62,22 +57,185 @@ export function renameBranchColor(oldName: string, newName: string) {
   }
 }
 
+// ─── ANIMATION SYSTEM ──────────────────────────────────────
+type AnimationType = "commit" | "edge" | "merge-edge";
+interface Animation {
+  type: AnimationType;
+  key: string;
+  progress: number;
+  startTime: number;
+  duration: number;
+}
+
+const ANIM_DURATION_COMMIT = 400;
+const ANIM_DURATION_EDGE = 350;
+const ANIM_DURATION_MERGE = 500;
+
+let knownCommits = new Set<string>();
+let knownEdges = new Set<string>();
+let animations: Animation[] = [];
+let rafHandle: number | null = null;
+
+function edgeKey(parentId: string, childId: string) {
+  return `${parentId}->${childId}`;
+}
+
+function easeOut(t: number) {
+  const t1 = 1 - t;
+  return 1 - t1 * t1 * t1;
+}
+
+function startAnim(type: AnimationType, key: string, now: number) {
+  if (animations.find((a) => a.key === key)) return;
+  const duration =
+    type === "commit"
+      ? ANIM_DURATION_COMMIT
+      : type === "merge-edge"
+        ? ANIM_DURATION_MERGE
+        : ANIM_DURATION_EDGE;
+  animations.push({ type, key, progress: 0, startTime: now, duration });
+}
+
+function tickAnimations(now: number): boolean {
+  let anyRunning = false;
+  for (const a of animations) {
+    const elapsed = now - a.startTime;
+    a.progress = Math.min(1, elapsed / a.duration);
+    if (a.progress < 1) anyRunning = true;
+  }
+  animations = animations.filter((a) => a.progress < 1);
+  return anyRunning;
+}
+
+function getAnimProgress(key: string): number {
+  const anim = animations.find((a) => a.key === key);
+  if (!anim) return 1;
+  return easeOut(anim.progress);
+}
+
+export function resetAnimations() {
+  knownCommits = new Set();
+  knownEdges = new Set();
+  animations = [];
+  if (rafHandle !== null) {
+    cancelAnimationFrame(rafHandle);
+    rafHandle = null;
+  }
+}
+
+export function cancelGraphAnimation() {
+  if (rafHandle !== null) {
+    cancelAnimationFrame(rafHandle);
+    rafHandle = null;
+  }
+}
+
+// ─── LAYOUT ────────────────────────────────────────────────
 function buildLayout(S: RepoState) {
-  const order: string[] = [];
-  S.commits.forEach((c) => {
-    if (c.branch && !order.includes(c.branch)) order.push(c.branch);
+  // Main/master is always column 0 (center).
+  const mainName =
+    ["main", "master"].find((b) => b in S.branches) ||
+    (S.commits.length > 0 ? S.commits[0].branch : null);
+
+  // Row ranges per branch: first commit → last relevant row.
+  const branchFirstRow: Record<string, number> = {};
+  const branchEndRow: Record<string, number> = {};
+  const mergedBranches = new Set<string>();
+
+  S.commits.forEach((c, i) => {
+    if (!c.branch) return;
+    if (!(c.branch in branchFirstRow)) branchFirstRow[c.branch] = i;
+    branchEndRow[c.branch] = i;
   });
-  Object.keys(S.branches).forEach((b) => {
-    if (!order.includes(b)) order.push(b);
+
+  // When a merge commit references another branch's commit as a non-first
+  // parent, that branch is "merged" and its lane ends at the merge row.
+  S.commits.forEach((c, i) => {
+    if (c.parents.length <= 1) return;
+    for (let pi = 1; pi < c.parents.length; pi++) {
+      const pid = c.parents[pi];
+      if (!pid) continue;
+      const parent = S.commits.find((p) => p.id === pid);
+      if (parent?.branch && parent.branch !== c.branch) {
+        mergedBranches.add(parent.branch);
+        branchEndRow[parent.branch] = Math.max(
+          branchEndRow[parent.branch] ?? i,
+          i,
+        );
+      }
+    }
   });
+
+  // Non-merged, still-existing branches occupy their lane indefinitely.
+  for (const b of Object.keys(branchFirstRow)) {
+    if (!mergedBranches.has(b) && b in S.branches) {
+      branchEndRow[b] = Infinity;
+    }
+  }
+  if (mainName && mainName in branchFirstRow) {
+    branchEndRow[mainName] = Infinity;
+  }
+
+  // ── Column assignment: main at 0, others symmetrically ±1, ±2… ──
   const branchCol: Record<string, number> = {};
-  order.forEach((b, i) => (branchCol[b] = i));
+  if (mainName) branchCol[mainName] = 0;
+
+  const allocations: { col: number; startRow: number; endRow: number }[] = [];
+  if (mainName && mainName in branchFirstRow) {
+    allocations.push({ col: 0, startRow: 0, endRow: Infinity });
+  }
+
+  function isColFreeInRange(
+    col: number,
+    startRow: number,
+    endRow: number,
+  ): boolean {
+    return !allocations.some(
+      (a) => a.col === col && a.endRow >= startRow && a.startRow <= endRow,
+    );
+  }
+
+  const otherBranches = Object.keys(branchFirstRow)
+    .filter((b) => b !== mainName)
+    .sort((a, b) => branchFirstRow[a] - branchFirstRow[b]);
+
+  for (const b of otherBranches) {
+    const startRow = branchFirstRow[b];
+    const endRow = branchEndRow[b];
+
+    // Try +1, -1, +2, -2, … to distribute symmetrically & reuse freed lanes.
+    let bestCol: number | null = null;
+    for (let dist = 1; dist <= 20; dist++) {
+      if (isColFreeInRange(dist, startRow, endRow)) {
+        bestCol = dist;
+        break;
+      }
+      if (isColFreeInRange(-dist, startRow, endRow)) {
+        bestCol = -dist;
+        break;
+      }
+    }
+    if (bestCol === null) bestCol = allocations.length + 1;
+
+    branchCol[b] = bestCol;
+    allocations.push({ col: bestCol, startRow, endRow });
+  }
+
+  // Branches with no commits yet.
+  Object.keys(S.branches).forEach((b) => {
+    if (!(b in branchCol)) branchCol[b] = 0;
+  });
+
   const colOf: Record<string, number> = {};
   S.commits.forEach((c) => {
     colOf[c.id] = (c.branch ? branchCol[c.branch] : undefined) ?? 0;
   });
-  const maxCol = Math.max(0, ...Object.values(branchCol));
-  return { colOf, branchCol, maxCol };
+
+  const allCols = Object.values(branchCol);
+  const minCol = Math.min(0, ...allCols);
+  const maxCol = Math.max(0, ...allCols);
+
+  return { colOf, branchCol, minCol, maxCol };
 }
 
 function rrect(
@@ -101,6 +259,50 @@ function rrect(
   ctx.closePath();
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const n = parseInt(
+    h.length === 3
+      ? h
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : h,
+    16,
+  );
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function drawPartialBezier(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  cx1: number,
+  cy1: number,
+  cx2: number,
+  cy2: number,
+  x3: number,
+  y3: number,
+  t: number,
+) {
+  const ax = x0 + (cx1 - x0) * t;
+  const ay = y0 + (cy1 - y0) * t;
+  const bx = cx1 + (cx2 - cx1) * t;
+  const by = cy1 + (cy2 - cy1) * t;
+  const pcx = cx2 + (x3 - cx2) * t;
+  const pcy = cy2 + (y3 - cy2) * t;
+  const dx = ax + (bx - ax) * t;
+  const dy = ay + (by - ay) * t;
+  const ex = bx + (pcx - bx) * t;
+  const ey = by + (pcy - by) * t;
+  const fx = dx + (ex - dx) * t;
+  const fy = dy + (ey - dy) * t;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.bezierCurveTo(ax, ay, dx, dy, fx, fy);
+}
+
+// ─── MAIN DRAW ─────────────────────────────────────────────
 export type DrawResult = { commitCount: number };
 
 export function drawGraph(
@@ -108,23 +310,29 @@ export function drawGraph(
   wrap: HTMLElement,
   S: RepoState,
 ): DrawResult {
-  const ctx = canvas.getContext("2d");
+  if (rafHandle !== null) {
+    cancelAnimationFrame(rafHandle);
+    rafHandle = null;
+  }
+
+  const ctx = canvas.getContext("2d")!;
   if (!ctx) return { commitCount: 0 };
 
-  const { colOf, maxCol } = buildLayout(S);
+  const { colOf, minCol, maxCol } = buildLayout(S);
   const rows = S.commits.length;
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-  const W = Math.max(wrap.clientWidth, PL + (maxCol + 1) * COL + 200);
+  const treeWidth = (maxCol - minCol) * COL;
+  const W = Math.max(wrap.clientWidth, treeWidth + 500);
   const H = Math.max(wrap.clientHeight, PT + rows * ROW + 100);
 
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   canvas.style.width = W + "px";
   canvas.style.height = H + "px";
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
 
   if (!S.inited) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#d4d4d8";
     ctx.font = "500 13px Geist Mono,monospace";
     ctx.textAlign = "center";
@@ -132,179 +340,319 @@ export function drawGraph(
     return { commitCount: 0 };
   }
   if (!rows) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#d4d4d8";
     ctx.font = "13px Geist Mono,monospace";
     ctx.textAlign = "center";
-    ctx.fillText('no commits yet — try  git commit -m "init"', W / 2, H / 2);
+    ctx.fillText(
+      'no commits yet \u2014 try  git commit -m "init"',
+      W / 2,
+      H / 2,
+    );
     return { commitCount: 0 };
+  }
+
+  // Detect new commits and edges for animation.
+  const now = performance.now();
+  for (const c of S.commits) {
+    if (!knownCommits.has(c.id)) {
+      knownCommits.add(c.id);
+      const isMerge = c.parents.length > 1;
+      startAnim("commit", c.id, now);
+      for (const pid of c.parents) {
+        if (!pid) continue;
+        const ek = edgeKey(pid, c.id);
+        if (!knownEdges.has(ek)) {
+          knownEdges.add(ek);
+          startAnim(isMerge ? "merge-edge" : "edge", ek, now);
+        }
+      }
+    }
   }
 
   const rowOf: Record<string, number> = {};
   S.commits.forEach((c, i) => (rowOf[c.id] = i));
-  const cx = (id: string) => PL + (colOf[id] ?? 0) * COL;
-  const cy = (id: string) => PT + rowOf[id] * ROW;
+  // Center the column range horizontally in the canvas.
+  const graphMidCol = (maxCol + minCol) / 2;
+  const centerX = W / 2 - graphMidCol * COL;
+  const cxOf = (id: string) => centerX + (colOf[id] ?? 0) * COL;
+  const cyOf = (id: string) => PT + rowOf[id] * ROW;
 
-  // EDGES — straight when same column, bezier when different.
-  S.commits.forEach((c) => {
-    c.parents.filter(Boolean).forEach((pid) => {
-      const parentId = pid as string;
-      if (rowOf[parentId] === undefined) return;
-      const x1 = cx(parentId),
-        y1 = cy(parentId),
-        x2 = cx(c.id),
-        y2 = cy(c.id);
-      const col = branchColor(c.branch || "main");
-      ctx.beginPath();
-      ctx.strokeStyle = col + "55";
-      ctx.lineWidth = 2;
-      if (x1 === x2) {
-        ctx.moveTo(x1, y1 + CR);
-        ctx.lineTo(x2, y2 - CR);
-      } else {
-        const my = (y1 + y2) / 2;
-        ctx.moveTo(x1, y1 + CR);
-        ctx.bezierCurveTo(x1, my, x2, my, x2, y2 - CR);
-      }
-      ctx.stroke();
+  function renderFrame() {
+    const frameNow = performance.now();
+    const animating = tickAnimations(frameNow);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // ── EDGES ────────────────────────────────────────────
+    S.commits.forEach((c) => {
+      c.parents.filter(Boolean).forEach((pid) => {
+        const parentId = pid as string;
+        if (rowOf[parentId] === undefined) return;
+        const x1 = cxOf(parentId),
+          y1 = cyOf(parentId),
+          x2 = cxOf(c.id),
+          y2 = cyOf(c.id);
+        const col = branchColor(c.branch || "main");
+        const ek = edgeKey(parentId, c.id);
+        const progress = getAnimProgress(ek);
+
+        ctx.save();
+        ctx.globalAlpha = 0.4 * progress;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+
+        if (x1 === x2) {
+          const startY = y1 + CR;
+          const endY = y2 - CR;
+          const currentEndY = startY + (endY - startY) * progress;
+          ctx.beginPath();
+          ctx.moveTo(x1, startY);
+          ctx.lineTo(x2, currentEndY);
+        } else {
+          const startY = y1 + CR;
+          const endY = y2 - CR;
+          const my = (startY + endY) / 2;
+          if (progress >= 1) {
+            ctx.beginPath();
+            ctx.moveTo(x1, startY);
+            ctx.bezierCurveTo(x1, my, x2, my, x2, endY);
+          } else {
+            drawPartialBezier(
+              ctx,
+              x1,
+              startY,
+              x1,
+              my,
+              x2,
+              my,
+              x2,
+              endY,
+              progress,
+            );
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
     });
-  });
 
-  // COMMITS
-  S.commits.forEach((c) => {
-    const x = cx(c.id),
-      y = cy(c.id);
-    const isMerge = c.parents.length > 1;
-    const col = branchColor(c.branch || "main");
-    const isHead = S.detached ? S.HEAD === c.id : S.HEAD ? S.branches[S.HEAD] === c.id : false;
+    // ── COMMITS ──────────────────────────────────────────
+    S.commits.forEach((c) => {
+      const x = cxOf(c.id),
+        y = cyOf(c.id);
+      const isMerge = c.parents.length > 1;
+      const col = branchColor(c.branch || "main");
+      const isHead = S.detached
+        ? S.HEAD === c.id
+        : S.HEAD
+          ? S.branches[S.HEAD] === c.id
+          : false;
+      const commitProgress = getAnimProgress(c.id);
 
-    const ptBranches = Object.entries(S.branches)
-      .filter(([, cid]) => cid === c.id)
-      .map(([b]) => b);
-    const ptTags = Object.entries(S.tags)
-      .filter(([, t]) => t.commitId === c.id)
-      .map(([n]) => n);
+      const ptBranches = Object.entries(S.branches)
+        .filter(([, cid]) => cid === c.id)
+        .map(([b]) => b);
+      const ptTags = Object.entries(S.tags)
+        .filter(([, t]) => t.commitId === c.id)
+        .map(([n]) => n);
 
-    const labels = [
-      ...ptBranches.map((b) => ({
-        text: b,
-        color: branchColor(b),
-        isHead: !S.detached && b === S.HEAD,
-      })),
-      ...ptTags.map((t) => ({ text: "tag:" + t, color: "#8b5cf6", isHead: false })),
-    ];
+      const labels = [
+        ...ptBranches.map((b) => ({
+          text: b,
+          color: branchColor(b),
+          isHead: !S.detached && b === S.HEAD,
+        })),
+        ...ptTags.map((t) => ({
+          text: "tag:" + t,
+          color: "#8b5cf6",
+          isHead: false,
+        })),
+      ];
 
-    // Stacked labels above commit — each in its own row, never overlapping.
-    const LH = 20,
-      LG = 3;
-    const totalLH = labels.length * (LH + LG);
-    ctx.font = "600 9px Geist Mono,monospace";
+      ctx.save();
+      ctx.globalAlpha = commitProgress;
 
-    labels.forEach((lbl, li) => {
-      const lx = x;
-      const ly = y - CR - 12 - totalLH + li * (LH + LG);
-      const text = (lbl.isHead ? "▶ " : "") + lbl.text;
-      const tw = ctx.measureText(text).width;
-      const pw = tw + 14,
-        ph = LH;
-      const px = lx - pw / 2,
-        py = ly;
+      // Scale-in animation.
+      if (commitProgress < 1) {
+        const scale = 0.3 + 0.7 * commitProgress;
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.translate(-x, -y);
+      }
 
-      ctx.shadowColor = "rgba(0,0,0,0.08)";
-      ctx.shadowBlur = 8;
-      ctx.shadowOffsetY = 2;
+      // ── LABELS ───────────────────────────────────────
+      const LH = 22,
+        LG = 4;
+      const totalLH = labels.length * (LH + LG);
+      ctx.font = "600 9.5px Geist Mono,monospace";
+
+      labels.forEach((lbl, li) => {
+        const lx = x;
+        const ly = y - CR - 14 - totalLH + li * (LH + LG);
+        const text = (lbl.isHead ? "\u25B6 " : "") + lbl.text;
+        const tw = ctx.measureText(text).width;
+        const pw = tw + 18,
+          ph = LH;
+        const px = lx - pw / 2,
+          py = ly;
+
+        ctx.shadowColor = "rgba(0,0,0,0.06)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 2;
+        rrect(ctx, px, py, pw, ph, 6);
+        ctx.fillStyle = lbl.isHead ? lbl.color : "#ffffff";
+        ctx.fill();
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.strokeStyle = lbl.isHead ? lbl.color : lbl.color + "40";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = lbl.isHead ? "#ffffff" : lbl.color;
+        ctx.textAlign = "center";
+        ctx.fillText(text, lx, py + 14.5);
+
+        if (li === labels.length - 1) {
+          ctx.beginPath();
+          ctx.strokeStyle = lbl.color + "30";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.moveTo(lx, py + ph);
+          ctx.lineTo(lx, y - CR - 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      });
+
+      // Detached HEAD annotation.
+      if (S.detached && isHead) {
+        const dy = y - CR - (totalLH || 0) - 30;
+        ctx.font = "600 9px Geist,sans-serif";
+        ctx.fillStyle = "#71717a";
+        ctx.textAlign = "center";
+        ctx.fillText("HEAD (detached)", x, dy);
+      }
+
+      // ── HEAD GLOW ──────────────────────────────────
+      if (isHead) {
+        const [r, g, b] = hexToRgb(col);
+        ctx.shadowColor = `rgba(${r},${g},${b},0.2)`;
+        ctx.shadowBlur = 24;
+        ctx.shadowOffsetY = 0;
+        ctx.beginPath();
+        ctx.arc(x, y, CR + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.15)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+      }
+
+      // ── COMMIT CIRCLE ──────────────────────────────
+      ctx.shadowColor = "rgba(0,0,0,0.10)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 3;
       ctx.beginPath();
-      rrect(ctx, px, py, pw, ph, 4);
-      ctx.fillStyle = lbl.isHead ? lbl.color : "#ffffff";
+      ctx.arc(x, y, CR, 0, Math.PI * 2);
+
+      if (isHead) {
+        const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, CR);
+        const [r, g, b] = hexToRgb(col);
+        grad.addColorStop(0, `rgba(${r},${g},${b},0.85)`);
+        grad.addColorStop(1, col);
+        ctx.fillStyle = grad;
+      } else if (isMerge) {
+        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, CR);
+        const [r, g, b] = hexToRgb(col);
+        grad.addColorStop(0, `rgba(${r},${g},${b},0.7)`);
+        grad.addColorStop(1, `rgba(${r},${g},${b},0.9)`);
+        ctx.fillStyle = grad;
+      } else {
+        const grad = ctx.createRadialGradient(x - 3, y - 3, 1, x, y, CR);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(1, "#f8f8fa");
+        ctx.fillStyle = grad;
+      }
       ctx.fill();
+
       ctx.shadowColor = "transparent";
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.strokeStyle = lbl.isHead ? lbl.color : lbl.color + "60";
+
+      if (isHead) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 2.5;
+      } else {
+        ctx.strokeStyle = col + "90";
+        ctx.lineWidth = 2;
+      }
+      ctx.stroke();
+
+      // Inner highlight (gloss).
+      ctx.beginPath();
+      ctx.arc(x, y - 2, CR - 5, -Math.PI * 0.8, -Math.PI * 0.2);
+      ctx.strokeStyle = "rgba(255,255,255,0.4)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      ctx.fillStyle = lbl.isHead ? "#ffffff" : lbl.color;
-      ctx.textAlign = "center";
-      ctx.fillText(text, lx, py + 13.5);
-
-      // Connector dashed line from the bottom-most label to the commit circle.
-      if (li === labels.length - 1) {
+      // Merge icon overlay.
+      if (isMerge) {
+        ctx.save();
+        ctx.strokeStyle = isHead
+          ? "rgba(255,255,255,0.8)"
+          : "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 1.8;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.beginPath();
-        ctx.strokeStyle = lbl.color + "40";
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 3]);
-        ctx.moveTo(lx, py + ph);
-        ctx.lineTo(lx, y - CR - 2);
+        ctx.moveTo(x - 5, y - 4);
+        ctx.lineTo(x, y + 1);
         ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y - 4);
+        ctx.lineTo(x, y + 1);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y + 1);
+        ctx.lineTo(x, y + 5);
+        ctx.stroke();
+        ctx.restore();
       }
+
+      // Short hash (only for non-merge commits).
+      if (!isMerge) {
+        ctx.font = "600 8.5px Geist Mono,monospace";
+        ctx.fillStyle = isHead ? "rgba(255,255,255,0.95)" : col;
+        ctx.textAlign = "center";
+        ctx.fillText(c.id.slice(0, 5), x, y + 3.5);
+      }
+
+      // Commit message.
+      ctx.font = "500 12.5px Geist,sans-serif";
+      ctx.fillStyle = isHead ? "#18181b" : "#52525b";
+      ctx.textAlign = "left";
+      const msg = c.msg.length > 28 ? c.msg.slice(0, 28) + "\u2026" : c.msg;
+      ctx.fillText(msg, x + CR + 14, y + 1);
+
+      // Commit hash subtitle.
+      ctx.font = "400 10px Geist Mono,monospace";
+      ctx.fillStyle = "#a1a1aa";
+      ctx.fillText(c.id.slice(0, 7), x + CR + 14, y + 16);
+
+      ctx.restore();
     });
 
-    // Detached HEAD annotation floats above the label stack.
-    if (S.detached && isHead) {
-      const dy = y - CR - (totalLH || 0) - 28;
-      ctx.font = "600 9px Geist,sans-serif";
-      ctx.fillStyle = "#71717a";
-      ctx.textAlign = "center";
-      ctx.fillText("HEAD (detached)", x, dy);
+    if (animating) {
+      rafHandle = requestAnimationFrame(renderFrame);
     }
+  }
 
-    // Glow / shadow for HEAD commit.
-    if (isHead) {
-      ctx.shadowColor = col + "33";
-      ctx.shadowBlur = 18;
-      ctx.shadowOffsetY = 2;
-      ctx.beginPath();
-      ctx.arc(x, y, CR + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = col + "25";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-
-    // Circle fill.
-    ctx.shadowColor = "rgba(0,0,0,0.12)";
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, CR, 0, Math.PI * 2);
-    ctx.fillStyle = isHead ? col : isMerge ? col + "dd" : "#ffffff";
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    ctx.strokeStyle = isHead ? col : col + "aa";
-    ctx.lineWidth = isHead ? 0 : 2;
-    ctx.stroke();
-
-    // Merge diamond overlay for non-HEAD merge commits.
-    if (isMerge && !isHead) {
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(Math.PI / 4);
-      ctx.strokeStyle = col + "cc";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-7, -7, 14, 14);
-      ctx.restore();
-    }
-
-    // Short hash inside circle.
-    ctx.font = "600 8px Geist Mono,monospace";
-    ctx.fillStyle = isHead ? "rgba(255,255,255,0.9)" : col;
-    ctx.textAlign = "center";
-    ctx.fillText(c.id.slice(0, 5), x, y + 3.5);
-
-    // Commit message (truncated).
-    ctx.font = "500 12.5px Geist,sans-serif";
-    ctx.fillStyle = isHead ? "#111111" : "#71717a";
-    ctx.textAlign = "left";
-    const msg = c.msg.length > 26 ? c.msg.slice(0, 26) + "…" : c.msg;
-    ctx.fillText(msg, x + CR + 12, y + 4.5);
-
-    ctx.font = "400 10px Geist Mono,monospace";
-    ctx.fillStyle = "#a1a1aa";
-    ctx.fillText(c.author || "", x + CR + 12, y + 18);
-  });
-
+  renderFrame();
   return { commitCount: rows };
 }

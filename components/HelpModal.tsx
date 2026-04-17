@@ -26,17 +26,27 @@ function renderCode(code: string) {
       break;
     }
     if (open > i) parts.push(code.slice(i, open));
-    parts.push(<span key={key++}>{code.slice(open + 1, close)}</span>);
+    parts.push(
+      <span key={key++} className="text-blue-500">
+        {code.slice(open + 1, close)}
+      </span>,
+    );
     i = close + 1;
   }
   return parts;
 }
 
-function Cell({ cmd }: { cmd: HelpCmd }) {
+function Cell({ cmd, isRight }: { cmd: HelpCmd; isRight?: boolean }) {
   return (
-    <div className="cmd-cell">
-      <code className="cmd-code">{renderCode(cmd.code)}</code>
-      <span className="cmd-desc">{cmd.desc}</span>
+    <div
+      className={`py-2.25 ${isRight ? "border-l border-zinc-100 pl-5" : ""}`}
+    >
+      <code className="font-mono text-[11.5px] font-medium text-zinc-800 block">
+        {renderCode(cmd.code)}
+      </code>
+      <span className="font-sans text-[11.5px] text-zinc-400 mt-0.5 block leading-[1.4]">
+        {cmd.desc}
+      </span>
     </div>
   );
 }
@@ -44,34 +54,59 @@ function Cell({ cmd }: { cmd: HelpCmd }) {
 export default function HelpModal({ open, onClose }: Props) {
   return (
     <div
-      className={"overlay" + (open ? " open" : "")}
+      className={`fixed inset-0 z-200 bg-black/30 backdrop-blur-md flex items-center justify-center transition-opacity duration-180 ${
+        open
+          ? "opacity-100 pointer-events-auto"
+          : "opacity-0 pointer-events-none"
+      }`}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="modal">
-        <div className="modal-header">
+      <div
+        className={`bg-white border border-zinc-200 rounded-[10px] w-[min(740px,94vw)] max-h-[86vh] overflow-hidden flex flex-col shadow-[0_24px_80px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.04)] [transition:transform_0.2s_cubic-bezier(0.16,1,0.3,1),opacity_0.18s] ${
+          open
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-2 scale-[0.99] opacity-0"
+        }`}
+      >
+        {/* Modal header */}
+        <div className="px-6 pt-5 pb-4 border-b border-zinc-200 flex items-center justify-between shrink-0 bg-zinc-50">
           <div>
-            <div className="modal-title">Command Reference</div>
-            <div className="modal-subtitle">50+ git commands supported</div>
+            <div className="text-[13px] font-semibold text-zinc-900">
+              Command Reference
+            </div>
+            <div className="text-[11px] text-zinc-400 mt-0.5 font-mono">
+              50+ git commands supported
+            </div>
           </div>
-          <button className="modal-close-btn" onClick={onClose}>
+          <button
+            className="w-7 h-7 rounded-sm bg-transparent border border-zinc-200 text-zinc-400 cursor-pointer flex items-center justify-center text-sm transition-all duration-120 hover:bg-zinc-100 hover:text-zinc-700 hover:border-zinc-300"
+            onClick={onClose}
+          >
             ✕
           </button>
         </div>
-        <div className="modal-body">
+
+        {/* Modal body */}
+        <div className="overflow-y-auto flex-1 scrollbar-light">
           {HELP_SECTIONS.map((section) => (
             <Fragment key={section.label}>
-              <div className="cmd-section-label">{section.label}</div>
+              <div className="text-[10px] font-semibold tracking-[0.08em] uppercase text-zinc-400 px-6 py-3.5 pb-2 sticky top-0 bg-white border-b border-zinc-100 z-1 font-sans">
+                {section.label}
+              </div>
               {section.rows.map((row, ri) => (
-                <div className="cmd-row" key={ri}>
+                <div
+                  key={ri}
+                  className="grid grid-cols-2 px-6 border-b border-zinc-100 last:border-b-0"
+                >
                   <Cell cmd={row[0]} />
-                  <Cell cmd={row[1]} />
+                  <Cell cmd={row[1]} isRight />
                 </div>
               ))}
             </Fragment>
           ))}
-          <div style={{ height: 16 }} />
+          <div className="h-4" />
         </div>
       </div>
     </div>

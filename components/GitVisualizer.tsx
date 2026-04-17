@@ -5,8 +5,8 @@ import { fresh, type RepoState } from "@/lib/gitState";
 import { createEngine, type LineClass } from "@/lib/gitCommands";
 
 import Header from "./Header";
-import TerminalPane, { type TerminalLine } from "./TerminalPane";
-import GraphPane from "./GraphPane";
+import TerminalPanel, { type TerminalLine } from "./TerminalPanel";
+import GraphPanel from "./GraphPanel";
 import HelpModal from "./HelpModal";
 
 export default function GitVisualizer() {
@@ -48,7 +48,10 @@ export default function GitVisualizer() {
   // One-time welcome banner.
   useEffect(() => {
     print("Welcome to GitViz — visual Git practice.", "in");
-    print("Run  git init  to begin. Press  ?  or click Commands for help.", "dm");
+    print(
+      "Run  git init  to begin. Press  ?  or click Commands for help.",
+      "dm",
+    );
     print("↑ ↓ navigate history  •  Tab to autocomplete", "dm");
     print("", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,21 +94,23 @@ export default function GitVisualizer() {
 
   return (
     <>
-      <Header
-        state={S}
-        onelineMode={S.onelineMode}
-        onToggleOneline={handleToggleOneline}
-        onOpenHelp={openHelp}
-      />
-
-      <div className="workspace">
-        <TerminalPane
-          lines={lines}
-          onSubmit={handleSubmit}
-          onClearClick={clearTerminal}
-          onResetClick={handleTerminalReset}
+      <div className="gitviz-root fixed inset-0 flex flex-col overflow-hidden bg-white">
+        <Header
+          state={S}
+          onelineMode={S.onelineMode}
+          onToggleOneline={handleToggleOneline}
+          onOpenHelp={openHelp}
         />
-        <GraphPane state={S} revision={revision} />
+
+        <div className="grid grid-cols-2 flex-1 min-h-0">
+          <TerminalPanel
+            lines={lines}
+            onSubmit={handleSubmit}
+            onClearClick={clearTerminal}
+            onResetClick={handleTerminalReset}
+          />
+          <GraphPanel state={S} revision={revision} />
+        </div>
       </div>
 
       <HelpModal open={helpOpen} onClose={closeHelp} />

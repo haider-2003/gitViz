@@ -9,7 +9,11 @@ import {
   now,
   pushRL,
 } from "./gitState";
-import { renameBranchColor, resetPalette } from "./graphRenderer";
+import {
+  renameBranchColor,
+  resetAnimations,
+  resetPalette,
+} from "./graphRenderer";
 
 export type LineClass =
   | "p"
@@ -65,7 +69,10 @@ export function tokenize(input: string): string[] {
 
 // Mutates S in place. The reference to S must stay alive across calls
 // (we use a mutable container so the engine can also replace it on `reset`).
-export function createEngine(stateRef: { current: RepoState }, hooks: EngineHooks) {
+export function createEngine(
+  stateRef: { current: RepoState },
+  hooks: EngineHooks,
+) {
   const { printer } = hooks;
   const p = (t: string, c: LineClass = "ou") => printer.print(t, c);
   const pCmd = (t: string) => p(t, "p");
@@ -80,6 +87,7 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
   function doReset() {
     stateRef.current = fresh();
     resetPalette();
+    resetAnimations();
     pWn("Repository wiped. Run  git init  to start fresh.");
     hooks.onReset();
   }
@@ -248,7 +256,11 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
           const c = S.commits.find((x) => x.id === cid);
           const m = !S.detached && b === S.HEAD ? "* " : "  ";
           p(
-            m + b + (c ? `  ${cid!.slice(0, 7)}  ${c.msg.slice(0, 30)}` : "  (empty)"),
+            m +
+              b +
+              (c
+                ? `  ${cid!.slice(0, 7)}  ${c.msg.slice(0, 30)}`
+                : "  (empty)"),
             !S.detached && b === S.HEAD ? "ok" : "ou",
           );
         });
@@ -260,7 +272,11 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
           const c = S.commits.find((x) => x.id === cid);
           const m = !S.detached && b === S.HEAD ? "* " : "  ";
           p(
-            m + b.padEnd(22) + (cid?.slice(0, 7) || "-------") + "  " + (c?.msg.slice(0, 30) || ""),
+            m +
+              b.padEnd(22) +
+              (cid?.slice(0, 7) || "-------") +
+              "  " +
+              (c?.msg.slice(0, 30) || ""),
             !S.detached && b === S.HEAD ? "ok" : "ou",
           );
         });
@@ -308,7 +324,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         delete S.branches[old];
         renameBranchColor(old, nw);
         if (S.HEAD === old) S.HEAD = nw;
-        S.commits.filter((c) => c.branch === old).forEach((c) => (c.branch = nw));
+        S.commits
+          .filter((c) => c.branch === old)
+          .forEach((c) => (c.branch = nw));
         pOk(`Renamed '${old}' to '${nw}'.`);
         hooks.onStateChange();
         return;
@@ -355,7 +373,10 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         return;
       }
       if (bF) {
-        if (Object.prototype.hasOwnProperty.call(S.branches, name) && flags[0] !== "-B") {
+        if (
+          Object.prototype.hasOwnProperty.call(S.branches, name) &&
+          flags[0] !== "-B"
+        ) {
           pErr(`fatal: branch '${name}' already exists.`);
           return;
         }
@@ -450,7 +471,7 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         return;
       }
       const squash = flags.includes("--squash"),
-        noFF = flags.includes("--no-ff");
+        ff = flags.includes("--ff");
       const name = flags.find((f) => !f.startsWith("-"));
       if (!name) {
         pErr("error: branch name required.");
@@ -474,7 +495,7 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         pErr(`'${name}' has no commits.`);
         return;
       }
-      if (dstId && isAncestor(S, dstId, srcId) && !noFF && !squash) {
+      if (dstId && isAncestor(S, dstId, srcId) && ff && !squash) {
         S.branches[S.HEAD!] = srcId;
         pOk("Fast-forward");
         pIn(`${S.HEAD} → ${srcId.slice(0, 7)}`);
@@ -484,7 +505,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
       }
       if (squash) {
         S.staged.push(`(squashed from '${name}')`);
-        pWn(`Squash merge: changes staged. Run  git commit -m "msg"  to finish.`);
+        pWn(
+          `Squash merge: changes staged. Run  git commit -m "msg"  to finish.`,
+        );
         hooks.onStateChange();
         return;
       }
@@ -524,7 +547,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
       }
       const hm = arg.match(/^HEAD~(\d+)$/i);
       if (hm || iF) {
-        const n = hm ? parseInt(hm[1]) : parseInt(arg.replace(/HEAD~/i, "")) || 1;
+        const n = hm
+          ? parseInt(hm[1])
+          : parseInt(arg.replace(/HEAD~/i, "")) || 1;
         pIn(`Interactive rebase of last ${n} commit(s) (simulated).`);
         pDm("In real Git this opens an editor.");
         return;
@@ -544,7 +569,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
       }
       const cur = S.HEAD!,
         baseAncs = ancestors(S, baseId);
-      const excl = S.commits.filter((c) => c.branch === cur && !baseAncs.has(c.id));
+      const excl = S.commits.filter(
+        (c) => c.branch === cur && !baseAncs.has(c.id),
+      );
       if (!excl.length) {
         pOk("Already up to date.");
         return;
@@ -630,7 +657,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
           pDm("(no stashes)");
           return;
         }
-        S.stashes.forEach((s, i) => p(`stash@{${i}}: On ${s.branch}: ${s.msg}`, "ou"));
+        S.stashes.forEach((s, i) =>
+          p(`stash@{${i}}: On ${s.branch}: ${s.msg}`, "ou"),
+        );
         return;
       }
       if (act === "show") {
@@ -748,10 +777,14 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         S.working = [];
         pWn(`HEAD is now at ${tgt?.id?.slice(0, 7) || "null"} (hard reset)`);
       } else if (soft) {
-        pOk(`Soft reset to ${tgt?.id?.slice(0, 7) || "null"} — changes kept staged.`);
+        pOk(
+          `Soft reset to ${tgt?.id?.slice(0, 7) || "null"} — changes kept staged.`,
+        );
       } else {
         S.staged = [];
-        pOk(`Mixed reset to ${tgt?.id?.slice(0, 7) || "null"} — changes unstaged.`);
+        pOk(
+          `Mixed reset to ${tgt?.id?.slice(0, 7) || "null"} — changes unstaged.`,
+        );
       }
       pushRL(S, "reset", target);
       hooks.onStateChange();
@@ -823,7 +856,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
               .replace(/^["']|["']$/g, "")
           : "";
       const name = flags.find((f) => !f.startsWith("-")) || flags[0];
-      const commitArg = flags.find((f, i) => !f.startsWith("-") && f !== name && i > 0);
+      const commitArg = flags.find(
+        (f, i) => !f.startsWith("-") && f !== name && i > 0,
+      );
       const c = commitArg
         ? S.commits.find((x) => x.id.startsWith(commitArg))
         : headCommit(S);
@@ -847,7 +882,9 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
       const ni = flags.findIndex((f) => f === "-n");
       const limit = ni !== -1 ? parseInt(flags[ni + 1]) : Infinity;
       const bArg = flags.find(
-        (f) => !f.startsWith("-") && Object.prototype.hasOwnProperty.call(S.branches, f),
+        (f) =>
+          !f.startsWith("-") &&
+          Object.prototype.hasOwnProperty.call(S.branches, f),
       );
       let list = [...S.commits].reverse();
       if (bArg) {
@@ -869,7 +906,10 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
           .map(([n]) => n);
         if (oneline && !graph) {
           const refs = [...brs, ...tgs.map((t) => "tag:" + t)].join(", ");
-          p(`${c.id.slice(0, 7)}  ${refs ? "(" + refs + ")  " : ""}${c.msg}`, "ou");
+          p(
+            `${c.id.slice(0, 7)}  ${refs ? "(" + refs + ")  " : ""}${c.msg}`,
+            "ou",
+          );
         } else if (graph) {
           const pre = c.parents.length > 1 ? "*-.  " : "*    ";
           p(pre + c.id.slice(0, 7) + "  " + c.msg, "ou");
@@ -941,7 +981,10 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         return;
       }
       S.reflog.forEach((r, i) =>
-        p(`HEAD@{${i}}  ${(r.to || "---").slice(0, 7)}  ${r.action}: ${r.desc}`, "ou"),
+        p(
+          `HEAD@{${i}}  ${(r.to || "---").slice(0, 7)}  ${r.action}: ${r.desc}`,
+          "ou",
+        ),
       );
       return;
     }
@@ -964,7 +1007,10 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
       S.commits
         .slice(-5)
         .forEach((c) =>
-          p(`${c.id.slice(0, 7)}  (${(c.author || "?").padEnd(12)})  ${c.msg}`, "ou"),
+          p(
+            `${c.id.slice(0, 7)}  (${(c.author || "?").padEnd(12)})  ${c.msg}`,
+            "ou",
+          ),
         );
       return;
     }
@@ -1040,7 +1086,8 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         pWn(`Deleted remote branch ${branch} (simulated).`);
         return;
       }
-      if (tok.includes("-u")) pOk(`Branch '${branch}' tracks remote '${branch}'.`);
+      if (tok.includes("-u"))
+        pOk(`Branch '${branch}' tracks remote '${branch}'.`);
       pOk(`${force ? "Force-" : ""}Pushed to ${remote}/${branch} (simulated).`);
       return;
     }
@@ -1053,7 +1100,10 @@ export function createEngine(stateRef: { current: RepoState }, hooks: EngineHook
         return;
       }
       const key = flags[0];
-      const val = flags.slice(1).join(" ").replace(/^["']|["']$/g, "");
+      const val = flags
+        .slice(1)
+        .join(" ")
+        .replace(/^["']|["']$/g, "");
       if (!key) {
         pErr("usage: git config <key> <value>");
         return;
