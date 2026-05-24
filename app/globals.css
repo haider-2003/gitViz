@@ -45,14 +45,17 @@ body:has(.gitviz-root) {
     grab;
 }
 /* ── Entrance animations ────────────────────────────────────
-   Used by the landing page. Custom easing (easeOutExpo-ish)
-   gives a natural decelerating arrival rather than a linear slide. */
+   Tuned to Emil Kowalski's SKILL.md principles:
+     - Strong custom ease-out curve (built-in easings are too weak)
+     - Hero entrances stay under 600ms even for marketing context
+     - Scale starts at 0.97 — never from scale(0)
+     - Small travel (6-8px) reads as more elegant than dramatic slides */
 @keyframes gv-fade-up {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes gv-scale-in {
-  from { opacity: 0; transform: scale(0.97) translateY(8px); }
+  from { opacity: 0; transform: scale(0.97) translateY(6px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
 @keyframes gv-pulse {
@@ -60,11 +63,14 @@ body:has(.gitviz-root) {
   70%      { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
 }
 
+/* cubic-bezier(0.22, 1, 0.36, 1) is a strong easeOutExpo variant — the same
+   curve we use for the canvas label entrance, so the two surfaces share
+   a single motion personality. */
 .hero-reveal {
-  animation: gv-fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: gv-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .hero-scale-in {
-  animation: gv-scale-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: gv-scale-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .gv-pulse {
   animation: gv-pulse 2.4s ease-out infinite;

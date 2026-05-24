@@ -78,7 +78,7 @@ function Hero() {
       <div className="mx-auto max-w-4xl text-center">
         <div
           className="hero-reveal mb-7 inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[11px] text-zinc-600"
-          style={{ animationDelay: "60ms" }}
+          style={{ animationDelay: "40ms" }}
         >
           <span className="gv-pulse h-1.5 w-1.5 rounded-full bg-emerald-500" />
           In your browser — no install
@@ -87,14 +87,14 @@ function Hero() {
         <h1 className="text-5xl font-semibold leading-[1.05] tracking-tight md:text-7xl">
           <span
             className="hero-reveal inline-block"
-            style={{ animationDelay: "140ms" }}
+            style={{ animationDelay: "100ms" }}
           >
             Practice Git.
           </span>
           <br />
           <span
             className="hero-reveal inline-block text-zinc-400"
-            style={{ animationDelay: "240ms" }}
+            style={{ animationDelay: "170ms" }}
           >
             See every commit.
           </span>
@@ -102,7 +102,7 @@ function Hero() {
 
         <p
           className="hero-reveal mx-auto mt-6 max-w-xl text-base leading-relaxed text-zinc-600 md:text-lg"
-          style={{ animationDelay: "360ms" }}
+          style={{ animationDelay: "240ms" }}
         >
           An interactive sandbox where every command you type draws itself
           as a graph. Learn branches, merges, and rebases by doing — not
@@ -111,7 +111,7 @@ function Hero() {
 
         <div
           className="hero-reveal mt-9 flex flex-wrap items-center justify-center gap-3"
-          style={{ animationDelay: "480ms" }}
+          style={{ animationDelay: "310ms" }}
         >
           <Link
             href="/play"
@@ -136,7 +136,7 @@ function Hero() {
 
         <div
           className="hero-reveal mt-10 flex flex-wrap items-center justify-center gap-6 font-mono text-[11px] text-zinc-400"
-          style={{ animationDelay: "620ms" }}
+          style={{ animationDelay: "380ms" }}
         >
           <span className="inline-flex items-center gap-1.5">
             <Kbd>?</Kbd> commands
@@ -161,8 +161,8 @@ function Preview() {
     <section className="px-6 pb-24">
       <div className="mx-auto max-w-5xl">
         <div
-          className="hero-scale-in group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_30px_60px_-12px_rgba(0,0,0,0.08)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.03),0_40px_80px_-16px_rgba(0,0,0,0.12)]"
-          style={{ animationDelay: "720ms" }}
+          className="hero-scale-in group overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.02),0_30px_60px_-12px_rgba(0,0,0,0.08)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_rgba(0,0,0,0.03),0_40px_80px_-16px_rgba(0,0,0,0.12)]"
+          style={{ animationDelay: "470ms" }}
         >
           {/* window chrome */}
           <div className="flex h-9 items-center gap-1.5 border-b border-zinc-200 bg-zinc-50 px-3">
@@ -428,7 +428,7 @@ function FeatureCard({
 }) {
   return (
     <div className="group relative h-full overflow-hidden bg-white p-7 transition-colors duration-300 ease-out hover:bg-zinc-50/70">
-      <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition-all duration-300 ease-out group-hover:-translate-y-0.5 group-hover:border-zinc-300 group-hover:text-[#0070F3] group-hover:shadow-[0_6px_16px_-10px_rgba(0,0,0,0.18)]">
+      <div className="mb-4 inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-white text-zinc-700 transition-[transform,border-color,color,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:border-zinc-300 group-hover:text-[#0070F3] group-hover:shadow-[0_6px_16px_-10px_rgba(0,0,0,0.18)]">
         {icon}
       </div>
       <h3 className="text-base font-semibold tracking-tight text-zinc-950">
@@ -496,7 +496,7 @@ function Step({
   desc: string;
 }) {
   return (
-    <div className="group h-full rounded-lg border border-zinc-200 bg-white p-7 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_12px_32px_-20px_rgba(0,0,0,0.2)]">
+    <div className="group h-full rounded-lg border border-zinc-200 bg-white p-7 transition-[transform,border-color,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-[0_12px_32px_-20px_rgba(0,0,0,0.2)]">
       <div className="font-mono text-xs font-medium text-[#0070F3] transition-colors duration-300 ease-out group-hover:text-[#0061d5]">
         {n}
       </div>
