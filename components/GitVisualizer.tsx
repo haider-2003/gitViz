@@ -9,6 +9,7 @@ import TerminalPanel, { type TerminalLine } from "./TerminalPanel";
 import GraphPanel from "./GraphPanel";
 import HelpModal from "./HelpModal";
 import ImportModal from "./ImportModal";
+import LessonsPanel from "./LessonsPanel";
 import { applyImport, type ImportedRepo } from "@/lib/repoImport";
 import { resetAnimations, resetPalette } from "@/lib/graphRenderer";
 
@@ -36,6 +37,7 @@ export default function GitVisualizer() {
   const [lines, setLines] = useState<TerminalLine[]>(() => [...WELCOME_LINES]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [lessonsOpen, setLessonsOpen] = useState(false);
 
   const forceUpdate = useCallback(() => setRevision((r) => r + 1), []);
 
@@ -49,6 +51,8 @@ export default function GitVisualizer() {
   const closeHelp = useCallback(() => setHelpOpen(false), []);
   const openImport = useCallback(() => setImportOpen(true), []);
   const closeImport = useCallback(() => setImportOpen(false), []);
+  const openLessons = useCallback(() => setLessonsOpen(true), []);
+  const closeLessons = useCallback(() => setLessonsOpen(false), []);
 
   // Build the engine once per component lifetime. The engine captures `boxRef`
   // and mutates `boxRef.current` in place — that's the design contract. The
@@ -101,6 +105,24 @@ export default function GitVisualizer() {
     engine.doReset();
   }, [engine]);
 
+  // Lessons + quizzes load a pre-built RepoState directly. Same plumbing
+  // as import: clear renderer caches, swap container, log to terminal.
+  const handleLoadLessonState = useCallback(
+    (next: RepoState, label: string) => {
+      resetAnimations();
+      resetPalette();
+      boxRef.current = next;
+      setLines((prev) => [
+        ...prev,
+        { text: `Loaded ${label}`, cls: "in" },
+        { text: "Read the goal panel on the right.", cls: "dm" },
+        { text: "", cls: "" },
+      ]);
+      forceUpdate();
+    },
+    [boxRef, forceUpdate],
+  );
+
   const handleImport = useCallback(
     (imp: ImportedRepo, label: string) => {
       // Reset renderer caches so old commits/edges/palette don't bleed into
@@ -151,6 +173,7 @@ export default function GitVisualizer() {
           onToggleOneline={handleToggleOneline}
           onOpenHelp={openHelp}
           onOpenImport={openImport}
+          onOpenLessons={openLessons}
         />
 
         <div className="grid grid-cols-2 flex-1 min-h-0">
@@ -170,6 +193,14 @@ export default function GitVisualizer() {
         open={importOpen}
         onClose={closeImport}
         onImport={handleImport}
+      />
+      <LessonsPanel
+        open={lessonsOpen}
+        onClose={closeLessons}
+        /* eslint-disable-next-line react-hooks/refs */
+        state={S}
+        revision={revision}
+        onLoadLessonState={handleLoadLessonState}
       />
     </>
   );
