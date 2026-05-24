@@ -7,6 +7,7 @@ type HeaderProps = {
   onelineMode: boolean;
   onToggleOneline: () => void;
   onOpenHelp: () => void;
+  onOpenImport: () => void;
 };
 
 export default function Header({
@@ -14,6 +15,7 @@ export default function Header({
   onelineMode,
   onToggleOneline,
   onOpenHelp,
+  onOpenImport,
 }: HeaderProps) {
   const dotCls = !state.inited
     ? "bg-zinc-300"
@@ -67,6 +69,13 @@ export default function Header({
 
       {/* Right — action buttons */}
       <div className="flex items-center gap-1.5">
+        <button
+          className="font-mono text-[11px] font-normal text-zinc-500 bg-transparent border border-zinc-200 px-2.75 py-1 rounded-sm cursor-pointer transition-all duration-120 whitespace-nowrap hover:text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50"
+          onClick={onOpenImport}
+          title="Import a public repo or paste git log output"
+        >
+          Import repo
+        </button>
         <button
           className={`font-mono text-[11px] font-normal border px-2.75 py-1 rounded-sm cursor-pointer transition-all duration-120 whitespace-nowrap hover:text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50 ${
             onelineMode

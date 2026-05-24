@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
+import HeroGlobe from "@/components/HeroGlobe";
 
 export default function LandingPage() {
   return (
@@ -61,7 +62,7 @@ function LandingNav() {
 
 function Hero() {
   return (
-    <section className="relative overflow-hidden px-6 pt-20 pb-12 md:pt-32 md:pb-16">
+    <section className="relative isolate overflow-hidden px-6 pt-20 pb-12 md:pt-32 md:pb-16">
       {/* Soft ambient backdrop — static gradient, no motion. */}
       <div
         aria-hidden
@@ -71,6 +72,8 @@ function Hero() {
             "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(0,112,243,0.06), transparent 70%), radial-gradient(ellipse 40% 35% at 80% 10%, rgba(16,185,129,0.05), transparent 70%)",
         }}
       />
+
+      <HeroGlobe />
 
       <div className="mx-auto max-w-4xl text-center">
         <div

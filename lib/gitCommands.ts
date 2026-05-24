@@ -8,6 +8,7 @@ import {
   isAncestor,
   now,
   pushRL,
+  fireAction,
 } from "./gitState";
 import {
   renameBranchColor,
@@ -154,7 +155,10 @@ export function createEngine(
       });
       S.branches["main"] = id;
       S.remotes["origin"] = url;
+      // Clone seeds the remote tracking ref so origin/main shows on canvas.
+      S.remoteBranches["origin/main"] = id;
       pushRL(S, "clone", `from ${url}`);
+      fireAction(S, "fetch", "origin");
       pOk(`Cloning from ${url}`);
       pOk("Checked out 'main'.");
       hooks.onStateChange();
@@ -176,6 +180,7 @@ export function createEngine(
         S.staged.push(f);
         pOk(`Added '${f}' to staging area.`);
       }
+      fireAction(S, "stage", S.HEAD);
       hooks.onStateChange();
       return;
     }
@@ -189,6 +194,7 @@ export function createEngine(
         S.working = S.working.filter((x) => x !== f && f !== ".");
         pOk(`Restored '${f}'.`);
       }
+      fireAction(S, "restore", S.HEAD);
       hooks.onStateChange();
       return;
     }
@@ -218,23 +224,35 @@ export function createEngine(
           return;
         }
         if (!noEdit && msg) last.msg = msg;
+        // Absorb any staged changes into the amended commit (visual cue).
+        S.staged = [];
+        fireAction(S, "amend", last.id);
         pOk(`[${S.HEAD} ${last.id}] ${last.msg} (amended)`);
         pushRL(S, "commit --amend", last.msg);
         hooks.onStateChange();
         return;
       }
-      const parent = headCommit(S)?.id || null;
+      const parentCommit = headCommit(S);
+      const parent = parentCommit?.id || null;
       const id = makeId(S);
+      // In detached HEAD, inherit the parent commit's branch so the new
+      // commit stays in the same visual lane instead of jumping to main.
+      const commitBranch = S.detached
+        ? (parentCommit?.branch ?? null)
+        : S.HEAD;
       S.commits.push({
         id,
         msg: msg || "commit",
         parents: parent ? [parent] : [],
-        branch: S.detached ? null : S.HEAD,
+        branch: commitBranch,
         author: S.config["user.name"],
         ts: now(),
       });
       if (!S.detached && S.HEAD) S.branches[S.HEAD] = id;
       else S.HEAD = id;
+      // Squash-merge follow-up: clear the marker, commit now represents the
+      // merge result so the dashed source-edge can fade away.
+      if (S.squashSourceBranch) S.squashSourceBranch = null;
       S.staged = [];
       pushRL(S, "commit", msg);
       pOk(`[${S.detached ? id : S.HEAD} ${id}] ${msg}`);
@@ -468,10 +486,12 @@ export function createEngine(
       const flags = tok.slice(2);
       if (flags[0] === "--abort") {
         pWn("Merge aborted.");
+        fireAction(S, "inspect", S.HEAD);
+        hooks.onStateChange();
         return;
       }
       const squash = flags.includes("--squash"),
-        ff = flags.includes("--ff");
+        noFf = flags.includes("--no-ff");
       const name = flags.find((f) => !f.startsWith("-"));
       if (!name) {
         pErr("error: branch name required.");
@@ -495,7 +515,9 @@ export function createEngine(
         pErr(`'${name}' has no commits.`);
         return;
       }
-      if (dstId && isAncestor(S, dstId, srcId) && ff && !squash) {
+      // Fast-forward is the default when possible — only forced off by --no-ff
+      // or --squash. This matches real git behavior.
+      if (dstId && isAncestor(S, dstId, srcId) && !noFf && !squash) {
         S.branches[S.HEAD!] = srcId;
         pOk("Fast-forward");
         pIn(`${S.HEAD} → ${srcId.slice(0, 7)}`);
@@ -505,6 +527,8 @@ export function createEngine(
       }
       if (squash) {
         S.staged.push(`(squashed from '${name}')`);
+        S.squashSourceBranch = name;
+        fireAction(S, "squashSource", name);
         pWn(
           `Squash merge: changes staged. Run  git commit -m "msg"  to finish.`,
         );
@@ -533,10 +557,14 @@ export function createEngine(
       const flags = tok.slice(2);
       if (flags[0] === "--abort") {
         pWn("Rebase aborted.");
+        fireAction(S, "inspect", S.HEAD);
+        hooks.onStateChange();
         return;
       }
       if (flags[0] === "--continue") {
         pOk("Rebase continued.");
+        fireAction(S, "inspect", S.HEAD);
+        hooks.onStateChange();
         return;
       }
       const iF = flags[0] === "-i",
@@ -552,6 +580,8 @@ export function createEngine(
           : parseInt(arg.replace(/HEAD~/i, "")) || 1;
         pIn(`Interactive rebase of last ${n} commit(s) (simulated).`);
         pDm("In real Git this opens an editor.");
+        fireAction(S, "inspect", S.HEAD);
+        hooks.onStateChange();
         return;
       }
       if (S.detached) {
@@ -567,22 +597,58 @@ export function createEngine(
         pErr(`'${arg}' has no commits.`);
         return;
       }
-      const cur = S.HEAD!,
-        baseAncs = ancestors(S, baseId);
-      const excl = S.commits.filter(
-        (c) => c.branch === cur && !baseAncs.has(c.id),
-      );
-      if (!excl.length) {
+      const cur = S.HEAD!;
+      const curTip = S.branches[cur];
+      if (!curTip) {
+        pErr(`'${cur}' has no commits.`);
+        return;
+      }
+      // If upstream is already an ancestor of current tip, nothing to do.
+      // If current tip is an ancestor of upstream, fast-forward instead.
+      if (isAncestor(S, baseId, curTip)) {
+        pOk("Current branch is up to date.");
+        return;
+      }
+      if (isAncestor(S, curTip, baseId)) {
+        S.branches[cur] = baseId;
+        pushRL(S, "rebase (ff)", arg);
+        pOk(`Fast-forwarded ${cur} to ${arg}.`);
+        hooks.onStateChange();
+        return;
+      }
+      // Walk from cur's tip back through first-parent until we hit something
+      // reachable from baseId — that is the merge base. Collect commits along
+      // the way; they are the ones to replay (in oldest→newest order).
+      const baseAncs = ancestors(S, baseId);
+      const toReplay: Commit[] = [];
+      {
+        let cursor: string | null = curTip;
+        const guard = new Set<string>();
+        while (cursor && !baseAncs.has(cursor) && !guard.has(cursor)) {
+          guard.add(cursor);
+          const c = S.commits.find((x) => x.id === cursor);
+          if (!c) break;
+          toReplay.unshift(c);
+          cursor = c.parents[0] ?? null;
+        }
+      }
+      if (!toReplay.length) {
         pOk("Already up to date.");
         return;
       }
+      // Replay: re-parent each commit onto the previous one, starting from
+      // baseId. Update branch field so layout assigns the correct lane.
       let prev: string = baseId;
-      excl.forEach((c) => {
+      for (const c of toReplay) {
         c.parents = [prev];
+        c.branch = cur;
         prev = c.id;
-      });
+      }
       S.branches[cur] = prev;
       pushRL(S, "rebase", arg);
+      toReplay.forEach((c) =>
+        pDm(`  applied: ${c.id.slice(0, 7)} ${c.msg}`),
+      );
       pOk(`Successfully rebased ${cur} onto ${arg}.`);
       hooks.onStateChange();
       return;
@@ -660,6 +726,8 @@ export function createEngine(
         S.stashes.forEach((s, i) =>
           p(`stash@{${i}}: On ${s.branch}: ${s.msg}`, "ou"),
         );
+        fireAction(S, "inspect", null);
+        hooks.onStateChange();
         return;
       }
       if (act === "show") {
@@ -669,6 +737,8 @@ export function createEngine(
         }
         pIn(`stash@{0}: ${S.stashes[0].msg}`);
         pDm("(simulated diff)");
+        fireAction(S, "inspect", null);
+        hooks.onStateChange();
         return;
       }
       if (act === "pop" || act === "apply") {
@@ -685,6 +755,7 @@ export function createEngine(
           S.stashes.splice(idx, 1);
           pOk(`Dropped stash@{${idx}}`);
         }
+        fireAction(S, "stashPop", S.HEAD);
         hooks.onStateChange();
         return;
       }
@@ -697,11 +768,15 @@ export function createEngine(
         }
         S.stashes.splice(idx, 1);
         pOk(`Dropped stash@{${idx}}`);
+        fireAction(S, "stashPop", null);
+        hooks.onStateChange();
         return;
       }
       if (act === "clear") {
         S.stashes = [];
         pOk("All stashes cleared.");
+        fireAction(S, "stashPop", null);
+        hooks.onStateChange();
         return;
       }
       if (act === "branch") {
@@ -740,6 +815,7 @@ export function createEngine(
       });
       S.staged = [];
       S.working = [];
+      fireAction(S, "stashSave", S.HEAD);
       pOk(`Saved working directory: ${msg}`);
       hooks.onStateChange();
       return;
@@ -897,6 +973,8 @@ export function createEngine(
         return;
       }
       pSep();
+      fireAction(S, "inspect", list[0]?.id ?? null);
+      hooks.onStateChange();
       list.forEach((c) => {
         const brs = Object.entries(S.branches)
           .filter(([, cid]) => cid === c.id)
@@ -946,6 +1024,8 @@ export function createEngine(
         pWn("Changes not staged:");
         S.working.forEach((f) => pWn(`  modified: ${f}`));
       }
+      fireAction(S, "inspect", cur?.id ?? null);
+      hooks.onStateChange();
       return;
     }
     if (sub === "diff") {
@@ -954,6 +1034,8 @@ export function createEngine(
         pWn("Staged:");
         S.staged.forEach((f) => p("  + " + f, "ok"));
       } else pDm("No staged changes.");
+      fireAction(S, "inspect", S.HEAD);
+      hooks.onStateChange();
       return;
     }
     if (sub === "show") {
@@ -973,6 +1055,8 @@ export function createEngine(
       p(`    ${c.msg}`, "ou");
       pDm("(no file diff in simulator)");
       pSep();
+      fireAction(S, "inspect", c.id);
+      hooks.onStateChange();
       return;
     }
     if (sub === "reflog") {
@@ -986,6 +1070,8 @@ export function createEngine(
           "ou",
         ),
       );
+      fireAction(S, "inspect", S.HEAD);
+      hooks.onStateChange();
       return;
     }
     if (sub === "shortlog") {
@@ -999,6 +1085,8 @@ export function createEngine(
         p(`${a} (${ms.length}):`, "wn");
         ms.forEach((m) => p(`      ${m}`, "ou"));
       });
+      fireAction(S, "inspect", null);
+      hooks.onStateChange();
       return;
     }
     if (sub === "blame") {
@@ -1012,6 +1100,8 @@ export function createEngine(
             "ou",
           ),
         );
+      fireAction(S, "inspect", S.HEAD);
+      hooks.onStateChange();
       return;
     }
 
@@ -1036,7 +1126,9 @@ export function createEngine(
           return;
         }
         S.remotes[n] = u;
+        fireAction(S, "remote", n);
         pOk(`Remote '${n}' added.`);
+        hooks.onStateChange();
         return;
       }
       if (act === "remove" || act === "rm") {
@@ -1046,7 +1138,13 @@ export function createEngine(
           return;
         }
         delete S.remotes[n];
+        // Drop tracking refs that belonged to this remote.
+        Object.keys(S.remoteBranches)
+          .filter((k) => k.startsWith(n + "/"))
+          .forEach((k) => delete S.remoteBranches[k]);
+        fireAction(S, "remote", n);
         pOk(`Removed '${n}'.`);
+        hooks.onStateChange();
         return;
       }
       pErr(`git: 'remote ${act}' not supported.`);
@@ -1057,9 +1155,18 @@ export function createEngine(
         pErr("fatal: no remotes configured.");
         return;
       }
-      pIn(`Fetching from ${Object.keys(S.remotes)[0]}...`);
+      const remote = Object.keys(S.remotes)[0];
+      // Sync every local branch to its remote-tracking ref. This represents
+      // the remote already being in sync with the local repo (simulator
+      // doesn't model divergence yet, but the labels become visible).
+      Object.entries(S.branches).forEach(([b, cid]) => {
+        if (cid) S.remoteBranches[`${remote}/${b}`] = cid;
+      });
+      fireAction(S, "fetch", remote);
+      pIn(`Fetching from ${remote}...`);
       pDm("(simulated)");
-      pOk("Already up to date.");
+      pOk("Updated remote tracking refs.");
+      hooks.onStateChange();
       return;
     }
     if (sub === "pull") {
@@ -1068,9 +1175,16 @@ export function createEngine(
         return;
       }
       const rb = tok.includes("--rebase");
-      pIn(`Pulling from ${Object.keys(S.remotes)[0]}...`);
+      const remote = Object.keys(S.remotes)[0];
+      // Same as fetch in the simulator — refs become visible/aligned.
+      Object.entries(S.branches).forEach(([b, cid]) => {
+        if (cid) S.remoteBranches[`${remote}/${b}`] = cid;
+      });
+      fireAction(S, "pull", remote);
+      pIn(`Pulling from ${remote}...`);
       pDm("(simulated)");
       pOk(rb ? "Successfully rebased from remote." : "Already up to date.");
+      hooks.onStateChange();
       return;
     }
     if (sub === "push") {
@@ -1080,15 +1194,33 @@ export function createEngine(
       }
       const force = tok.includes("--force") || tok.includes("-f");
       const del = tok.includes("--delete");
-      const remote = tok[2] || "origin";
-      const branch = tok[3] || S.HEAD;
+      // tok layout for `git push [-u] [remote] [branch]`. -u is a flag, not
+      // positional, so collect non-flag positional args after "push".
+      const positional = tok
+        .slice(2)
+        .filter((t) => !t.startsWith("-"));
+      const remote = positional[0] || "origin";
+      const branch = positional[1] || S.HEAD || "main";
       if (del) {
-        pWn(`Deleted remote branch ${branch} (simulated).`);
+        delete S.remoteBranches[`${remote}/${branch}`];
+        fireAction(S, "push", `${remote}/${branch}`);
+        pWn(`Deleted remote branch ${remote}/${branch}.`);
+        hooks.onStateChange();
         return;
       }
+      const tipId = S.branches[branch] ?? null;
+      if (!tipId) {
+        pErr(`error: branch '${branch}' has no commits to push.`);
+        return;
+      }
+      S.remoteBranches[`${remote}/${branch}`] = tipId;
+      fireAction(S, "push", `${remote}/${branch}`);
       if (tok.includes("-u"))
-        pOk(`Branch '${branch}' tracks remote '${branch}'.`);
-      pOk(`${force ? "Force-" : ""}Pushed to ${remote}/${branch} (simulated).`);
+        pOk(`Branch '${branch}' tracks remote '${remote}/${branch}'.`);
+      pOk(
+        `${force ? "Force-" : ""}Pushed ${branch} → ${remote}/${branch}.`,
+      );
+      hooks.onStateChange();
       return;
     }
 
@@ -1097,6 +1229,8 @@ export function createEngine(
       const flags = tok.slice(2);
       if (flags[0] === "--list") {
         Object.entries(S.config).forEach(([k, v]) => p(`${k}=${v}`, "ou"));
+        fireAction(S, "config", null);
+        hooks.onStateChange();
         return;
       }
       const key = flags[0];
@@ -1112,6 +1246,8 @@ export function createEngine(
         S.config[key] = val;
         pOk(`Set ${key} = ${val}`);
       } else p(S.config[key] || "(not set)", "ou");
+      fireAction(S, "config", null);
+      hooks.onStateChange();
       return;
     }
 

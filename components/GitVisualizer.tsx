@@ -8,6 +8,9 @@ import Header from "./Header";
 import TerminalPanel, { type TerminalLine } from "./TerminalPanel";
 import GraphPanel from "./GraphPanel";
 import HelpModal from "./HelpModal";
+import ImportModal from "./ImportModal";
+import { applyImport, type ImportedRepo } from "@/lib/repoImport";
+import { resetAnimations, resetPalette } from "@/lib/graphRenderer";
 
 export default function GitVisualizer() {
   // Mutable repo state lives in a ref — commands mutate it in place,
@@ -17,6 +20,7 @@ export default function GitVisualizer() {
 
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const forceUpdate = useCallback(() => setRevision((r) => r + 1), []);
 
@@ -90,6 +94,32 @@ export default function GitVisualizer() {
     engine.doReset();
   }, [engine]);
 
+  const openImport = useCallback(() => setImportOpen(true), []);
+  const closeImport = useCallback(() => setImportOpen(false), []);
+
+  const handleImport = useCallback(
+    (imp: ImportedRepo, label: string) => {
+      // Reset renderer caches so old commits/edges/palette don't bleed into
+      // the imported graph (otherwise rebuilt branches inherit stale colors).
+      resetAnimations();
+      resetPalette();
+      applyImport(stateRef.current, imp);
+      setLines((prev) => [
+        ...prev,
+        { text: `Imported ${label}`, cls: "ok" },
+        {
+          text: `${stateRef.current.commits.length} commit(s) across ${
+            Object.keys(stateRef.current.branches).length
+          } branch(es)`,
+          cls: "dm",
+        },
+        { text: "", cls: "" },
+      ]);
+      forceUpdate();
+    },
+    [forceUpdate],
+  );
+
   const S = stateRef.current;
 
   return (
@@ -100,6 +130,7 @@ export default function GitVisualizer() {
           onelineMode={S.onelineMode}
           onToggleOneline={handleToggleOneline}
           onOpenHelp={openHelp}
+          onOpenImport={openImport}
         />
 
         <div className="grid grid-cols-2 flex-1 min-h-0">
@@ -114,6 +145,11 @@ export default function GitVisualizer() {
       </div>
 
       <HelpModal open={helpOpen} onClose={closeHelp} />
+      <ImportModal
+        open={importOpen}
+        onClose={closeImport}
+        onImport={handleImport}
+      />
     </>
   );
 }

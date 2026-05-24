@@ -16,6 +16,30 @@ export type ReflogEntry = {
 };
 export type Tag = { commitId: string; annotated: boolean; msg: string };
 
+// Transient action — drives short-lived canvas effects (flash, pulse, highlight)
+// for commands that otherwise wouldn't change graph topology.
+export type ActionKind =
+  | "amend"
+  | "squashSource"
+  | "stashSave"
+  | "stashPop"
+  | "push"
+  | "pull"
+  | "fetch"
+  | "inspect"
+  | "stage"
+  | "restore"
+  | "config"
+  | "remote";
+
+export type LastAction = {
+  kind: ActionKind;
+  // Anchors the effect — commit id, branch name, or remote name as appropriate.
+  target?: string | null;
+  // Monotonic id so the renderer can tell two same-kind actions apart.
+  nonce: number;
+};
+
 export type RepoState = {
   inited: boolean;
   commits: Commit[];
@@ -27,11 +51,18 @@ export type RepoState = {
   staged: string[];
   working: string[];
   remotes: Record<string, string>;
+  // remoteBranches["origin/main"] = commitId — drawn as faded labels.
+  remoteBranches: Record<string, string | null>;
   config: Record<string, string>;
   reflog: ReflogEntry[];
   counter: number;
   prevBranch: string | null;
   onelineMode: boolean;
+  lastAction: LastAction | null;
+  // Source-branch tip remembered between `merge --squash` and the follow-up
+  // commit, so the renderer can draw a dashed line from that tip to the
+  // staging area until the commit lands.
+  squashSourceBranch: string | null;
 };
 
 export function fresh(): RepoState {
@@ -46,12 +77,25 @@ export function fresh(): RepoState {
     staged: [],
     working: [],
     remotes: {},
+    remoteBranches: {},
     config: { "user.name": "You", "user.email": "you@example.com" },
     reflog: [],
     counter: 0,
     prevBranch: null,
     onelineMode: false,
+    lastAction: null,
+    squashSourceBranch: null,
   };
+}
+
+let _actionNonce = 0;
+export function fireAction(
+  S: RepoState,
+  kind: ActionKind,
+  target?: string | null,
+) {
+  _actionNonce++;
+  S.lastAction = { kind, target: target ?? null, nonce: _actionNonce };
 }
 
 export function makeId(S: RepoState): string {
